@@ -257,6 +257,7 @@ class _ChatState extends State<Chat> {
         });
       }
     }
+    
     // Vérifier le statut de la consultation
     if (_consultationId != null && _consultationId!.isNotEmpty) {
       final consultationDoc = await FirebaseFirestore.instance.collection('consultations').doc(_consultationId).get();
@@ -270,15 +271,26 @@ class _ChatState extends State<Chat> {
         }
       }
     }
+    
     // Vérifier si le patient a déjà évalué cette consultation
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null && _consultationId != null && _consultationId!.isNotEmpty) {
-      _hasRated = await _ratingService.hasPatientRatedAppointment(user.uid, _consultationId!);
-      setState(() {});
-    }
-    // Déclencher la modale d'évaluation si patient, consultation terminée, et pas encore évalué/refusé
-    if (!_isDoctor && _consultationTerminee && !_hasRated && !_neverShowRating) {
-      _checkAndShowRatingModal();
+    if (!_isDoctor && _consultationTerminee && _consultationId != null) {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        final hasRated = await _ratingService.hasPatientRatedAppointment(user.uid, _consultationId!);
+        if (mounted) {
+          setState(() {
+            _hasRated = hasRated;
+          });
+          
+          // Afficher la modale d'évaluation uniquement si :
+          // 1. Le patient n'a pas encore évalué
+          // 2. N'a pas choisi de ne jamais évaluer
+          // 3. La modale n'est pas déjà affichée
+          if (!_hasRated && !_neverShowRating && !_showRatingModal) {
+            _showRatingDialog();
+          }
+        }
+      }
     }
   }
 
@@ -324,13 +336,15 @@ class _ChatState extends State<Chat> {
 
   Future<void> _checkAndShowRatingModal() async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null || widget.chatId.isEmpty) return;
+    if (user == null || _consultationId == null || _consultationId!.isEmpty) return;
+    
     // Vérifier s'il existe déjà une évaluation pour ce patient et cette consultation
     final existingRating = await FirebaseFirestore.instance
         .collection('ratings')
         .where('patientId', isEqualTo: user.uid)
-        .where('appointmentId', isEqualTo: widget.chatId)
+        .where('consultationId', isEqualTo: _consultationId)
         .get();
+
     if (existingRating.docs.isNotEmpty) {
       setState(() {
         _hasRated = true;
@@ -344,99 +358,39 @@ class _ChatState extends State<Chat> {
     _showRatingDialog();
   }
 
-  void _showRatingDialog() {
-    showDialog(
+  void _showRatingDialog() async {
+    if (_showRatingModal || _hasRated || _neverShowRating) return;
+
+    setState(() {
+      _showRatingModal = true;
+    });
+
+    final result = await showDialog<dynamic>(
       context: context,
       barrierDismissible: false,
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('Évaluer le médecin'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('Merci de donner une note à votre consultation.'),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(5, (index) => IconButton(
-                  icon: Icon(
-                    Icons.star,
-                    color: index < _ratingValue ? Colors.amber : Colors.grey[300],
-                    size: 32,
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      _ratingValue = index + 1.0;
-                    });
-                  },
-                )),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                decoration: const InputDecoration(
-                  labelText: 'Commentaire (optionnel)',
-                  border: OutlineInputBorder(),
-                ),
-                minLines: 2,
-                maxLines: 4,
-                onChanged: (val) => _comment = val,
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  _showRatingModal = false;
-                });
-                Navigator.of(context).pop();
-              },
-              child: const Text('Plus tard'),
-            ),
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  _neverShowRating = true;
-                  _showRatingModal = false;
-                });
-                Navigator.of(context).pop();
-              },
-              child: const Text('Ne pas évaluer'),
-            ),
-            ElevatedButton(
-              onPressed: _ratingValue > 0 ? () async {
-                final user = FirebaseAuth.instance.currentUser;
-                if (user == null) return;
-                await _ratingService.createRating(
-                  patientId: user.uid,
-                  doctorId: widget.otherParticipantId,
-                  patientInfo: {'name': widget.currentUserName},
-                  rating: _ratingValue,
-                  comment: _comment,
-                  appointmentId: widget.chatId,
-                );
-                setState(() {
-                  _showRatingModal = false;
-                  _neverShowRating = true;
-                  _hasRated = true;
-                });
-                Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Merci pour votre évaluation !'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-                await _fetchConsultationIdAndStatus();
-                setState(() {});
-              } : null,
-              child: const Text('Valider'),
-            ),
-          ],
-        );
-      },
+      builder: (context) => RatingDialog(
+        doctorId: widget.otherParticipantId,
+        patientId: widget.currentUserId,
+        patientName: widget.currentUserName,
+        consultationId: _consultationId!,
+        onRatingSubmitted: () {
+          setState(() {
+            _hasRated = true;
+            _showRatingModal = false;
+            _neverShowRating = true;
+          });
+        },
+      ),
     );
+
+    if (mounted) {
+      setState(() {
+        _showRatingModal = false;
+        if (result == true) { // Ne pas évaluer
+          _neverShowRating = true;
+        }
+      });
+    }
   }
 
   Future<void> _detectUserRole() async {
@@ -886,6 +840,137 @@ class _ChatState extends State<Chat> {
           if (isMe) const SizedBox(width: 8),
         ],
       ),
+    );
+  }
+}
+
+class RatingDialog extends StatefulWidget {
+  final String doctorId;
+  final String patientId;
+  final String patientName;
+  final String consultationId;
+  final Function() onRatingSubmitted;
+
+  const RatingDialog({
+    Key? key,
+    required this.doctorId,
+    required this.patientId,
+    required this.patientName,
+    required this.consultationId,
+    required this.onRatingSubmitted,
+  }) : super(key: key);
+
+  @override
+  State<RatingDialog> createState() => _RatingDialogState();
+}
+
+class _RatingDialogState extends State<RatingDialog> {
+  double _rating = 0;
+  String _comment = '';
+  final RatingService _ratingService = RatingService();
+  bool _isSubmitting = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: const Text('Évaluer le médecin'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('Merci de donner une note à votre consultation.'),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(5, (index) {
+              return IconButton(
+                icon: Icon(
+                  Icons.star,
+                  color: index < _rating ? Colors.amber : Colors.grey[300],
+                  size: 32,
+                ),
+                onPressed: () {
+                  setState(() {
+                    _rating = index + 1.0;
+                  });
+                },
+              );
+            }),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            decoration: const InputDecoration(
+              labelText: 'Commentaire (optionnel)',
+              border: OutlineInputBorder(),
+            ),
+            minLines: 2,
+            maxLines: 4,
+            onChanged: (val) => _comment = val,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            Navigator.of(context).pop(false);
+          },
+          child: const Text('Plus tard'),
+        ),
+        TextButton(
+          onPressed: () {
+            Navigator.of(context).pop(true);
+          },
+          child: const Text('Ne pas évaluer'),
+        ),
+        ElevatedButton(
+          onPressed: _rating > 0 && !_isSubmitting ? () async {
+            setState(() {
+              _isSubmitting = true;
+            });
+            
+            try {
+              await _ratingService.createRating(
+                patientId: widget.patientId,
+                doctorId: widget.doctorId,
+                patientInfo: {'name': widget.patientName},
+                rating: _rating,
+                comment: _comment,
+                appointmentId: widget.consultationId,
+              );
+              
+              if (mounted) {
+                widget.onRatingSubmitted();
+                Navigator.of(context).pop('submitted');
+              }
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Erreur lors de l\'envoi de l\'évaluation: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            } finally {
+              if (mounted) {
+                setState(() {
+                  _isSubmitting = false;
+                });
+              }
+            }
+          } : null,
+          child: _isSubmitting 
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                )
+              : const Text('Valider'),
+        ),
+      ],
     );
   }
 } 

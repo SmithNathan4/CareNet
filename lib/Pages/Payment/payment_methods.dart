@@ -182,9 +182,15 @@ class _PaymentMethodsState extends State<PaymentMethods> with SingleTickerProvid
               {
                 'amount': _tarif ?? 0,
                 'method': _selectedPaymentMethod,
-                'date': FieldValue.serverTimestamp(),
+                'date': Timestamp.now(),
               }
             ]),
+          });
+
+          // Réactiver le chat associé
+          await FirebaseFirestore.instance.collection('chats').doc(chatQuery.docs.first.id).update({
+            'isActive': true,
+            'chatLocked': false,
           });
         }
       }
@@ -201,7 +207,7 @@ class _PaymentMethodsState extends State<PaymentMethods> with SingleTickerProvid
             {
               'amount': _tarif ?? 0,
               'method': _selectedPaymentMethod,
-              'date': FieldValue.serverTimestamp(),
+              'date': Timestamp.now(),
             }
           ],
         });
