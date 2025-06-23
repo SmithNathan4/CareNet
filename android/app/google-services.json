@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "900885010704",
+    "project_id": "carenet-69dcf",
+    "storage_bucket": "carenet-69dcf.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:900885010704:android:002c75a0341bd7b3202d95",
+        "android_client_info": {
+          "package_name": "com.carenet.carenet"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "900885010704-bucdem1b9jslvbp9qq4dopk8n9grmhqb.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.carenet.carenet",
+            "certificate_hash": "b37bd258871670fea36a343ff7eaf504b6f3d56a"
+          }
+        },
+        {
+          "client_id": "900885010704-9pdtn33gqie7f08iru86lrescsqdamlf.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD34YqE-1h46tdTqvOf1nWy2Ok0zWokDqs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "900885010704-100jaj4htmc4d145u3mcs56g1tu6gbi9.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "900885010704-gjvlauubhijp87std7socbtq5b1e5gqp.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.carenet.carenet"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
