@@ -34,7 +34,7 @@ class _HomeAdminState extends State<HomeAdmin> {
     final doctors = await firestore.collection('UserDoctor').get();
     final patients = await firestore.collection('UserPatient').get();
     final admins = await firestore.collection('UserAdmin').get();
-    final consultations = await firestore.collection('appointments').get();
+    final consultations = await firestore.collection('consultations').get();
     final evaluations = await firestore.collection('ratings').get();
     final paiements = await firestore.collection('payments').get().catchError((_) => null);
     setState(() {

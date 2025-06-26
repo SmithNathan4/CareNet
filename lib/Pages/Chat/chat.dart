@@ -492,7 +492,7 @@ class _ChatState extends State<Chat> {
         actions: [
           if (_isDoctor && !_consultationTerminee)
             IconButton(
-              icon: const Icon(Icons.check_circle_outline, color: Colors.blue),
+              icon: const Icon(Icons.check_circle_outline, color: Colors.red),
               tooltip: 'Terminer la consultation',
               onPressed: _isLoading ? null : _terminerConsultation,
             ),

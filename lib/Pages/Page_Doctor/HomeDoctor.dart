@@ -181,7 +181,7 @@ class _HomeDoctorState extends State<HomeDoctor> {
 
   Future<int> _getTotalPendingRequests() async {
     final QuerySnapshot snapshot = await _firestore
-        .collection('appointments')
+        .collection('consultations')
         .where('doctorId', isEqualTo: _auth.currentUser?.uid)
         .where('status', isEqualTo: 'pending')
         .get();
@@ -190,7 +190,7 @@ class _HomeDoctorState extends State<HomeDoctor> {
 
   Stream<int> _getPendingRequests() {
     return _firestore
-        .collection('appointments')
+        .collection('consultations')
         .where('doctorId', isEqualTo: _auth.currentUser?.uid)
         .where('status', isEqualTo: 'pending')
         .snapshots()
@@ -511,7 +511,7 @@ class _HomeDoctorState extends State<HomeDoctor> {
   Widget _buildAppointmentRequests() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
-          .collection('appointments')
+          .collection('consultations')
           .where('doctorId', isEqualTo: FirebaseAuth.instance.currentUser?.uid)
           .where('status', isEqualTo: 'paid')
           .snapshots(),
@@ -893,7 +893,7 @@ class _HomeDoctorState extends State<HomeDoctor> {
               Expanded(
                 child: StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance
-                      .collection('appointments')
+                      .collection('consultations')
                       .where('doctorId', isEqualTo: FirebaseAuth.instance.currentUser?.uid)
                       .where('status', isEqualTo: 'completed')
                       .where('paymentStatus', isEqualTo: 'paid')
@@ -1140,7 +1140,7 @@ class _HomeDoctorState extends State<HomeDoctor> {
           const SizedBox(height: 16),
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
-                .collection('appointments')
+                .collection('consultations')
                 .where('doctorId', isEqualTo: FirebaseAuth.instance.currentUser?.uid)
                 .where('status', isEqualTo: 'accepted')
                 .orderBy('appointmentDate')
@@ -1558,7 +1558,7 @@ class _HomeDoctorState extends State<HomeDoctor> {
         const SizedBox(width: 8),
         StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance
-              .collection('appointments')
+              .collection('consultations')
               .where('doctorId', isEqualTo: FirebaseAuth.instance.currentUser?.uid)
               .where('status', isEqualTo: 'pending')
               .snapshots(),

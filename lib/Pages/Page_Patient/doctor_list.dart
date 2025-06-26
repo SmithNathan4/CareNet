@@ -22,6 +22,7 @@ class _DoctorListState extends State<DoctorList> {
 
   // État pour suivre les favoris localement
   final Map<String, bool> _favorites = {};
+  String? _userId;
 
   final RatingService _ratingService = RatingService();
 
@@ -30,8 +31,12 @@ class _DoctorListState extends State<DoctorList> {
   @override
   void initState() {
     super.initState();
+    _userId = FirebaseAuth.instance.currentUser?.uid;
     _fetchDoctors();
     _loadSpecialities();
+    if (_userId != null) {
+      _loadFavorites();
+    }
   }
 
   Future<void> _fetchDoctors() async {
@@ -53,9 +58,11 @@ class _DoctorListState extends State<DoctorList> {
       setState(() {
         _doctors = List<Map<String, dynamic>>.from(doctorsData);
         _filteredDoctors = _doctors;
-
+        // Initialiser _favorites pour tous les docteurs
         for (var doctor in _doctors) {
-          _favorites[doctor['name']] = false;
+          if (!_favorites.containsKey(doctor['id'])) {
+            _favorites[doctor['id']] = false;
+          }
         }
       });
     } catch (e) {
@@ -66,6 +73,19 @@ class _DoctorListState extends State<DoctorList> {
   Future<void> _loadSpecialities() async {
     final specialities = await FirebaseFirestore.instance.collection('app_settings').doc('main').get().then((doc) => List<String>.from(doc.data()?['specialities'] ?? []));
     if (mounted) setState(() => _specialities = specialities);
+  }
+
+  Future<void> _loadFavorites() async {
+    final favSnapshot = await FirebaseFirestore.instance
+        .collection('UserPatient')
+        .doc(_userId)
+        .collection('favorites')
+        .get();
+    setState(() {
+      for (var doc in favSnapshot.docs) {
+        _favorites[doc.id] = true;
+      }
+    });
   }
 
   void _filterDoctors() {
@@ -79,24 +99,20 @@ class _DoctorListState extends State<DoctorList> {
   }
 
   void _toggleFavorite(Map<String, dynamic> doctor) async {
-    final String? userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId == null) return;
-
+    if (_userId == null) return;
+    final doctorId = doctor['id'];
     setState(() {
-      final doctorName = doctor['name'];
-      _favorites[doctorName] = !_favorites[doctorName]!;
+      _favorites[doctorId] = !_favorites[doctorId]!;
     });
-
     try {
-      if (_favorites[doctor['name']]!) {
-        // Ajouter aux favoris dans Firestore
+      if (_favorites[doctorId]!) {
         await FirebaseFirestore.instance
             .collection('UserPatient')
-            .doc(userId)
+            .doc(_userId)
             .collection('favorites')
-            .doc(doctor['id'])
+            .doc(doctorId)
             .set({
-          'id': doctor['id'],
+          'id': doctorId,
           'name': doctor['name'],
           'speciality': doctor['specialty'],
           'photoUrl': doctor['image'],
@@ -104,27 +120,24 @@ class _DoctorListState extends State<DoctorList> {
           'addedAt': FieldValue.serverTimestamp(),
         });
       } else {
-        // Retirer des favoris dans Firestore
         await FirebaseFirestore.instance
             .collection('UserPatient')
-            .doc(userId)
+            .doc(_userId)
             .collection('favorites')
-            .doc(doctor['id'])
+            .doc(doctorId)
             .delete();
       }
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(_favorites[doctor['name']]! 
-              ? 'Ajouté aux favoris' 
+          content: Text(_favorites[doctorId]!
+              ? 'Ajouté aux favoris'
               : 'Retiré des favoris'),
-          backgroundColor: _favorites[doctor['name']]! ? Colors.green : Colors.red,
+          backgroundColor: _favorites[doctorId]! ? Colors.green : Colors.red,
         ),
       );
     } catch (e) {
-      // En cas d'erreur, on revient à l'état précédent
       setState(() {
-        _favorites[doctor['name']] = !_favorites[doctor['name']]!;
+        _favorites[doctorId] = !_favorites[doctorId]!;
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -329,8 +342,8 @@ class _DoctorListState extends State<DoctorList> {
               children: [
                 IconButton(
                   icon: Icon(
-                    _favorites[doctor['name']]! ? Icons.favorite : Icons.favorite_border,
-                    color: _favorites[doctor['name']]! ? Colors.red : (isDark ? Colors.grey[400] : Colors.grey[600]),
+                    _favorites[doctor['id']] == true ? Icons.favorite : Icons.favorite_border,
+                    color: _favorites[doctor['id']] == true ? Colors.red : (isDark ? Colors.grey[400] : Colors.grey[600]),
                   ),
                   onPressed: () => _toggleFavorite(doctor),
                 ),
@@ -400,6 +413,8 @@ class _DoctorListState extends State<DoctorList> {
 
   @override
   Widget build(BuildContext context) {
+    final showBack = ModalRoute.of(context)?.settings.arguments is Map &&
+      (ModalRoute.of(context)?.settings.arguments as Map)['showBack'] == true;
     return Consumer<ThemeProvider>(
       builder: (context, themeProvider, child) {
         final isDark = themeProvider.isDarkMode;
@@ -411,6 +426,15 @@ class _DoctorListState extends State<DoctorList> {
             final isMobile = screenWidth <= 600;
             final crossAxisCount = isDesktop ? 3 : isTablet ? 2 : 1;
             return Scaffold(
+              appBar: AppBar(
+                title: const Text('Liste des Médecins'),
+                leading: showBack
+                    ? IconButton(
+                        icon: const Icon(Icons.arrow_back),
+                        onPressed: () => Navigator.of(context).pop(),
+                      )
+                    : null,
+              ),
               backgroundColor: isDark ? const Color(0xFF121212) : Colors.white,
               body: SafeArea(
                 child: Padding(

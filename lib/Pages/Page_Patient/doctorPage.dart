@@ -63,6 +63,7 @@ class _DoctorPageState extends State<DoctorPage> {
               final String photoUrl = doctorData['photoUrl']?.isNotEmpty == true 
                   ? doctorData['photoUrl'] 
                   : 'assets/default_profile.png';
+              final Map<String, dynamic> availability = (doctorData['availability'] ?? {}) as Map<String, dynamic>;
 
               return SingleChildScrollView(
                 child: Padding(
@@ -140,6 +141,7 @@ class _DoctorPageState extends State<DoctorPage> {
                               ],
                             ),
                             const SizedBox(height: 16),
+                            _buildHonorairesSection(availability),
                           ],
                         ),
                       ),
@@ -491,6 +493,69 @@ class _DoctorPageState extends State<DoctorPage> {
           ),
         );
       }).toList(),
+    );
+  }
+
+  Widget _buildHonorairesSection(Map<String, dynamic> availability) {
+    if (availability.isEmpty) {
+      return Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Text(
+            'Aucune disponibilité renseignée',
+            style: TextStyle(
+              fontSize: 16,
+              fontStyle: FontStyle.italic,
+              color: Colors.grey[600],
+            ),
+          ),
+        ),
+      );
+    }
+    // Affichage professionnel : jours et créneaux horaires
+    List<Widget> rows = [];
+    availability.forEach((jour, creneaux) {
+      if (creneaux is List) {
+        rows.add(
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(jour, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                const SizedBox(height: 4),
+                ...creneaux.map<Widget>((heure) => Padding(
+                  padding: const EdgeInsets.only(left: 12, bottom: 2),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.access_time, size: 16, color: Colors.blueGrey),
+                      const SizedBox(width: 6),
+                      Text(heure.toString(), style: const TextStyle(fontSize: 15)),
+                    ],
+                  ),
+                )).toList(),
+              ],
+            ),
+          ),
+        );
+      }
+    });
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Jours et horaires de travail', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            ...rows,
+          ],
+        ),
+      ),
     );
   }
 }

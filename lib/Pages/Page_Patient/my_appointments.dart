@@ -22,6 +22,8 @@ class _MyAppointmentsState extends State<MyAppointments> {
   List<Map<String, dynamic>> _consultations = [];
   bool _isLoading = true;
   Map<String, dynamic> _stats = {};
+  // Cache local pour éviter de recharger plusieurs fois le même médecin
+  final Map<String, Map<String, dynamic>> _doctorCache = {};
 
   @override
   void initState() {
@@ -70,6 +72,16 @@ class _MyAppointmentsState extends State<MyAppointments> {
     }
   }
 
+  Future<Map<String, dynamic>> _getDoctorInfo(String doctorId) async {
+    if (_doctorCache.containsKey(doctorId)) {
+      return _doctorCache[doctorId]!;
+    }
+    final doc = await FirebaseFirestore.instance.collection('UserDoctor').doc(doctorId).get();
+    final data = doc.data() ?? {};
+    _doctorCache[doctorId] = data;
+    return data;
+  }
+
   void _navigateToChat(String doctorId, String doctorName, String? doctorPhoto) {
     Navigator.pushNamed(
       context,
@@ -85,29 +97,134 @@ class _MyAppointmentsState extends State<MyAppointments> {
     );
   }
 
+  String _getStatutLabel(String status) {
+    if (status == 'active') return 'En cours';
+    if (status == 'completed') return 'Terminée';
+    return 'Inconnu';
+  }
+
+  IconData _getStatutIcon(String status) {
+    if (status == 'active') return Icons.message;
+    if (status == 'completed') return Icons.check_circle;
+    return Icons.help;
+  }
+
+  Color _getStatutColor(String status) {
+    if (status == 'active') return Colors.green;
+    if (status == 'completed') return Colors.blue;
+    return Colors.grey;
+  }
+
+  int _getMontantConsultation(Map<String, dynamic> c) {
+    int total = 0;
+    if (c['payments'] is List) {
+      for (final p in c['payments']) {
+        if (p is Map && p['amount'] != null) {
+          total += (p['amount'] as num).toInt();
+        }
+      }
+    } else if (c['amount'] != null) {
+      total += (c['amount'] as num).toInt();
+    }
+    return total;
+  }
+
+  String _getPaymentMethod(Map<String, dynamic> c) {
+    if (c['payments'] is List && (c['payments'] as List).isNotEmpty) {
+      final last = (c['payments'] as List).last;
+      if (last is Map && last['method'] != null) {
+        return last['method'].toString();
+      }
+    }
+    return c['paymentMethod']?.toString() ?? '-';
+  }
+
+  // Calcule le montant total dépensé par médecin
+  Map<String, int> _getMontantParMedecin() {
+    final Map<String, int> map = {};
+    for (final c in _consultations) {
+      final doctorId = c['doctorId'] ?? '';
+      int montant = 0;
+      if (c['payments'] is List) {
+        for (final p in c['payments']) {
+          if (p is Map && p['amount'] != null) {
+            montant += (p['amount'] as num).toInt();
+          }
+        }
+      } else if (c['amount'] != null) {
+        montant += (c['amount'] as num).toInt();
+      }
+      map[doctorId] = (map[doctorId] ?? 0) + montant;
+    }
+    return map;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final montantParMedecin = _getMontantParMedecin();
     return Scaffold(
       appBar: AppBar(
         title: const Text('Mes Consultations'),
         elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.add),
+            tooltip: 'Nouveau',
+            onPressed: () async {
+              final result = await showMenu<String>(
+                context: context,
+                position: const RelativeRect.fromLTRB(1000, 80, 16, 0),
+                items: [
+                  const PopupMenuItem<String>(
+                    value: 'consulter',
+                    child: Text('Consulter un médecin'),
+                  ),
+                ],
+              );
+              if (result == 'consulter') {
+                Navigator.pushNamed(context, AppRoutes.doctorList, arguments: {'showBack': true});
+              }
+            },
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                _buildStatsCard(),
-                Expanded(
-                  child: _consultations.isEmpty
-                      ? _buildEmptyState()
-                      : _buildConsultationsList(),
-                ),
-              ],
+          : SingleChildScrollView(
+              child: Column(
+                children: [
+                  _buildStatsCard(montantParMedecin),
+                  if (_consultations.any((c) => c['status'] == 'active'))
+                    _buildSectionTitle('Consultations'),
+                  if (_consultations.any((c) => c['status'] == 'active'))
+                    ..._consultations.where((c) => c['status'] == 'active').map((c) => _buildConsultationCard(c, montantParMedecin)).toList(),
+                  if (_consultations.any((c) => c['status'] == 'completed'))
+                    _buildSectionTitle('Consultations terminées'),
+                  if (_consultations.any((c) => c['status'] == 'completed'))
+                    ..._consultations.where((c) => c['status'] == 'completed').map((c) => _buildConsultationCard(c, montantParMedecin)).toList(),
+                  if (_consultations.isEmpty) _buildEmptyState(),
+                ],
+              ),
             ),
     );
   }
 
-  Widget _buildStatsCard() {
+  Widget _buildStatsCard(Map<String, int> montantParMedecin) {
+    // Calcul des statistiques dynamiquement
+    final totalConsultations = _consultations.length;
+    final consultationsEnCours = _consultations.where((c) => c['status'] == 'active').length;
+    int montantTotal = 0;
+    for (final c in _consultations) {
+      if (c['payments'] is List) {
+        for (final p in c['payments']) {
+          if (p is Map && p['amount'] != null) {
+            montantTotal += (p['amount'] as num).toInt();
+          }
+        }
+      } else if (c['amount'] != null) {
+        montantTotal += (c['amount'] as num).toInt();
+      }
+    }
     return Container(
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(16),
@@ -132,21 +249,21 @@ class _MyAppointmentsState extends State<MyAppointments> {
           Expanded(
             child: _buildStatItem(
               'Total',
-              '${_stats['totalConsultations'] ?? 0}',
+              '$totalConsultations',
               Icons.medical_services,
             ),
           ),
           Expanded(
             child: _buildStatItem(
-              'Actives',
-              '${_stats['activeConsultations'] ?? 0}',
-              Icons.check_circle,
+              'En cours',
+              '$consultationsEnCours',
+              Icons.message,
             ),
           ),
           Expanded(
             child: _buildStatItem(
               'Montant',
-              '${_stats['totalAmount'] ?? 0} FCFA',
+              '$montantTotal FCFA',
               Icons.payment,
             ),
           ),
@@ -223,175 +340,170 @@ class _MyAppointmentsState extends State<MyAppointments> {
     );
   }
 
-  Widget _buildConsultationsList() {
+  Widget _buildConsultationsList(Map<String, int> montantParMedecin) {
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: _consultations.length,
       itemBuilder: (context, index) {
         final consultation = _consultations[index];
-        return _buildConsultationCard(consultation);
+        return _buildConsultationCard(consultation, montantParMedecin);
       },
     );
   }
 
-  Widget _buildConsultationCard(Map<String, dynamic> consultation) {
+  Widget _buildConsultationCard(Map<String, dynamic> consultation, Map<String, int> montantParMedecin) {
     final createdAt = consultation['createdAt'] as Timestamp?;
     final formattedDate = createdAt != null
         ? DateFormat('dd/MM/yyyy à HH:mm').format(createdAt.toDate())
         : 'Date inconnue';
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+    final status = consultation['status'] ?? '';
+    final statutLabel = _getStatutLabel(status);
+    final statutIcon = _getStatutIcon(status);
+    final statutColor = _getStatutColor(status);
+    final montant = _getMontantConsultation(consultation);
+    final method = _getPaymentMethod(consultation);
+    final doctorId = consultation['doctorId'] ?? '';
+    final montantMedecin = montantParMedecin[doctorId] ?? 0;
+    return FutureBuilder<Map<String, dynamic>>(
+      future: _getDoctorInfo(doctorId),
+      builder: (context, snapshot) {
+        final doctorData = snapshot.data ?? {};
+        final doctorName = doctorData['name'] ?? 'Médecin inconnu';
+        final doctorPhoto = doctorData['photoUrl'] ?? '';
+        return Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                CircleAvatar(
-                  radius: 20,
-                  backgroundImage: consultation['doctorPhoto']?.isNotEmpty == true
-                      ? NetworkImage(consultation['doctorPhoto'])
-                      : null,
-                  child: consultation['doctorPhoto']?.isEmpty != false
-                      ? Icon(Icons.medical_services, size: 20, color: Colors.white)
-                      : null,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Dr. ${consultation['doctorName'] ?? 'Médecin inconnu'}',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Text(
-                        formattedDate,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: _getStatusColor(consultation['status']).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: _getStatusColor(consultation['status']).withOpacity(0.3),
+                Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 20,
+                      backgroundImage: doctorPhoto.isNotEmpty
+                          ? NetworkImage(doctorPhoto)
+                          : null,
+                      child: doctorPhoto.isEmpty
+                          ? Icon(Icons.medical_services, size: 20, color: Colors.white)
+                          : null,
                     ),
-                  ),
-                  child: Text(
-                    _getStatusText(consultation['status']),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Dr. $doctorName',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            formattedDate,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                          if (montantMedecin > 0)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2.0),
+                              child: Text(
+                                'Total dépensé chez ce médecin : $montantMedecin FCFA',
+                                style: const TextStyle(fontSize: 12, color: Colors.blueGrey, fontWeight: FontWeight.w500),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: statutColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: statutColor.withOpacity(0.3),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(statutIcon, size: 16, color: statutColor),
+                          const SizedBox(width: 4),
+                          Text(
+                            statutLabel,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: statutColor,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                if (consultation['reason']?.isNotEmpty == true) ...[
+                  Text(
+                    'Motif: ${consultation['reason']}',
                     style: TextStyle(
-                      fontSize: 12,
-                      color: _getStatusColor(consultation['status']),
-                      fontWeight: FontWeight.w500,
+                      fontSize: 14,
+                      color: Colors.grey[700],
                     ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            if (consultation['reason']?.isNotEmpty == true) ...[
-              Text(
-                'Motif: ${consultation['reason']}',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[700],
-                ),
-              ),
-              const SizedBox(height: 8),
-            ],
-            Row(
-              children: [
-                Icon(Icons.payment, size: 16, color: Colors.green[600]),
-                const SizedBox(width: 4),
-                Text(
-                  '${consultation['amount'] ?? 0} FCFA - ${consultation['paymentMethod'] ?? 'Paiement'}',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.green[600],
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      _navigateToChat(
-                        consultation['doctorId'],
-                        consultation['doctorName'],
-                        consultation['doctorPhoto'],
-                      );
-                    },
-                    icon: const Icon(Icons.chat, size: 16),
-                    label: const Text('Message'),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
+                  const SizedBox(height: 8),
+                ],
+                Row(
+                  children: [
+                    Icon(Icons.payment, size: 16, color: Colors.green[600]),
+                    const SizedBox(width: 4),
+                    Text(
+                      '$montant FCFA',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.green[600],
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      // Navigation vers les détails de la consultation
-                    },
-                    icon: const Icon(Icons.visibility, size: 16),
-                    label: const Text('Détails'),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
+                    const SizedBox(width: 12),
+                    Icon(Icons.credit_card, size: 16, color: Colors.blueGrey),
+                    const SizedBox(width: 4),
+                    Text(
+                      method,
+                      style: const TextStyle(fontSize: 13, color: Colors.blueGrey),
                     ),
-                  ),
+                  ],
                 ),
+                if (snapshot.connectionState == ConnectionState.waiting)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 8.0),
+                    child: LinearProgressIndicator(minHeight: 2),
+                  ),
               ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
-  Color _getStatusColor(String? status) {
-    switch (status) {
-      case 'active':
-        return Colors.green;
-      case 'completed':
-        return Colors.blue;
-      case 'cancelled':
-        return Colors.red;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  String _getStatusText(String? status) {
-    switch (status) {
-      case 'active':
-        return 'Active';
-      case 'completed':
-        return 'Terminée';
-      case 'cancelled':
-        return 'Annulée';
-      default:
-        return 'Inconnu';
-    }
+  Widget _buildSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: [
+          Text(
+            title,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
   }
 } 

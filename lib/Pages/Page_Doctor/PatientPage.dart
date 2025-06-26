@@ -169,7 +169,7 @@ class PatientPage extends StatelessWidget {
       margin: const EdgeInsets.all(16),
       child: StreamBuilder<QuerySnapshot>(
         stream: _firestore
-            .collection('appointments')
+            .collection('consultations')
             .where('patientId', isEqualTo: patientId)
             .orderBy('timestamp', descending: true)
             .limit(5)

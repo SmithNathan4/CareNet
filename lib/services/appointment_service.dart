@@ -228,7 +228,7 @@ class AppointmentService {
     bool hasReminder = true,
     int reminderMinutes = 30,
   }) async {
-    final docRef = await _firestore.collection('appointments').add({
+    final docRef = await _firestore.collection('consultations').add({
       'patientId': patientId,
       'doctorId': doctorId,
       'patientInfo': patientInfo,
@@ -251,7 +251,7 @@ class AppointmentService {
   // Obtenir les rendez-vous d'un patient
   Stream<List<Appointment>> getPatientAppointments(String patientId) {
     return _firestore
-        .collection('appointments')
+        .collection('consultations')
         .where('patientId', isEqualTo: patientId)
         .orderBy('dateTime', descending: true)
         .snapshots()
@@ -262,7 +262,7 @@ class AppointmentService {
   // Obtenir les rendez-vous d'un médecin
   Stream<List<Appointment>> getDoctorAppointments(String doctorId) {
     return _firestore
-        .collection('appointments')
+        .collection('consultations')
         .where('doctorId', isEqualTo: doctorId)
         .orderBy('dateTime', descending: true)
         .snapshots()
@@ -277,7 +277,7 @@ class AppointmentService {
     final endOfDay = startOfDay.add(const Duration(days: 1));
 
     return _firestore
-        .collection('appointments')
+        .collection('consultations')
         .where('doctorId', isEqualTo: doctorId)
         .where('dateTime',
             isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
@@ -290,7 +290,7 @@ class AppointmentService {
 
   // Confirmer un rendez-vous
   Future<void> confirmAppointment(String appointmentId) async {
-    await _firestore.collection('appointments').doc(appointmentId).update({
+    await _firestore.collection('consultations').doc(appointmentId).update({
       'status': 'confirmed',
       'confirmedAt': FieldValue.serverTimestamp(),
     });
@@ -298,7 +298,7 @@ class AppointmentService {
 
   // Annuler un rendez-vous
   Future<void> cancelAppointment(String appointmentId) async {
-    await _firestore.collection('appointments').doc(appointmentId).update({
+    await _firestore.collection('consultations').doc(appointmentId).update({
       'status': 'cancelled',
       'cancelledAt': FieldValue.serverTimestamp(),
     });
@@ -306,7 +306,7 @@ class AppointmentService {
 
   // Marquer un rendez-vous comme terminé
   Future<void> completeAppointment(String appointmentId) async {
-    await _firestore.collection('appointments').doc(appointmentId).update({
+    await _firestore.collection('consultations').doc(appointmentId).update({
       'status': 'completed',
       'completedAt': FieldValue.serverTimestamp(),
     });
@@ -314,14 +314,14 @@ class AppointmentService {
 
   // Mettre à jour le statut de paiement
   Future<void> updatePaymentStatus(String appointmentId, String status) async {
-    await _firestore.collection('appointments').doc(appointmentId).update({
+    await _firestore.collection('consultations').doc(appointmentId).update({
       'paymentStatus': status,
     });
   }
 
   // Mettre à jour les notes d'un rendez-vous
   Future<void> updateAppointmentNotes(String appointmentId, String notes) async {
-    await _firestore.collection('appointments').doc(appointmentId).update({
+    await _firestore.collection('consultations').doc(appointmentId).update({
       'notes': notes,
     });
   }
@@ -329,7 +329,7 @@ class AppointmentService {
   // Obtenir un rendez-vous spécifique
   Stream<Appointment?> getAppointment(String appointmentId) {
     return _firestore
-        .collection('appointments')
+        .collection('consultations')
         .doc(appointmentId)
         .snapshots()
         .map((doc) => doc.exists ? Appointment.fromFirestore(doc) : null);
@@ -339,7 +339,7 @@ class AppointmentService {
   Stream<List<Appointment>> getUpcomingPatientAppointments(String patientId) {
     final now = DateTime.now();
     return _firestore
-        .collection('appointments')
+        .collection('consultations')
         .where('patientId', isEqualTo: patientId)
         .where('dateTime', isGreaterThanOrEqualTo: Timestamp.fromDate(now))
         .where('status', whereIn: ['pending', 'confirmed'])
@@ -353,7 +353,7 @@ class AppointmentService {
   Stream<List<Appointment>> getUpcomingDoctorAppointments(String doctorId) {
     final now = DateTime.now();
     return _firestore
-        .collection('appointments')
+        .collection('consultations')
         .where('doctorId', isEqualTo: doctorId)
         .where('dateTime', isGreaterThanOrEqualTo: Timestamp.fromDate(now))
         .where('status', whereIn: ['pending', 'confirmed'])

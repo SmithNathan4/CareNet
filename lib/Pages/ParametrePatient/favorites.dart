@@ -64,28 +64,31 @@ class _FavoritesState extends State<Favorites> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final backgroundColor = Theme.of(context).scaffoldBackgroundColor;
+    final textColor = isDark ? Colors.white : _textColor;
     if (_userId == null) {
       return Scaffold(
-        backgroundColor: _secondaryColor,
-        appBar: _buildAppBar(),
+        backgroundColor: backgroundColor,
+        appBar: _buildAppBar(isDark),
         body: Center(
           child: Text(
             'Veuillez vous connecter pour voir vos favoris',
-            style: TextStyle(color: _textColor),
+            style: TextStyle(color: textColor),
           ),
         ),
       );
     }
 
     return Scaffold(
-      backgroundColor: _secondaryColor,
-      appBar: _buildAppBar(),
+      backgroundColor: backgroundColor,
+      appBar: _buildAppBar(isDark),
       body: StreamBuilder<QuerySnapshot>(
         stream: _favoritesStream,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
             return Center(
-              child: Text('Erreur: ${snapshot.error}'),
+              child: Text('Erreur: [${snapshot.error}', style: TextStyle(color: textColor)),
             );
           }
 
@@ -96,16 +99,16 @@ class _FavoritesState extends State<Favorites> {
           }
 
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return _buildEmptyState();
+            return _buildEmptyState(isDark, textColor);
           }
 
-          return _buildFavoritesList(snapshot.data!.docs);
+          return _buildFavoritesList(snapshot.data!.docs, isDark, textColor);
         },
       ),
     );
   }
 
-  PreferredSizeWidget _buildAppBar() {
+  PreferredSizeWidget _buildAppBar(bool isDark) {
     return AppBar(
       title: const Text(
         'Mes Favoris',
@@ -115,20 +118,19 @@ class _FavoritesState extends State<Favorites> {
           color: Colors.white,
         ),
       ),
-      backgroundColor: _primaryColor,
+      backgroundColor: isDark ? const Color(0xFF1E1E1E) : _primaryColor,
       elevation: 0,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
-      ),
+      shape: null, // AppBar rectangulaire
       iconTheme: const IconThemeData(color: Colors.white),
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(bool isDark, Color textColor) {
     return Center(
       child: Card(
         elevation: 2,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        color: isDark ? const Color(0xFF232323) : Colors.white,
         child: Padding(
           padding: const EdgeInsets.all(24.0),
           child: Column(
@@ -145,7 +147,7 @@ class _FavoritesState extends State<Favorites> {
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w500,
-                  color: _textColor,
+                  color: textColor,
                 ),
               ),
               const SizedBox(height: 8),
@@ -154,7 +156,7 @@ class _FavoritesState extends State<Favorites> {
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 14,
-                  color: Colors.grey[600],
+                  color: isDark ? Colors.grey[400] : Colors.grey[600],
                 ),
               ),
             ],
@@ -164,7 +166,7 @@ class _FavoritesState extends State<Favorites> {
     );
   }
 
-  Widget _buildFavoritesList(List<QueryDocumentSnapshot> favorites) {
+  Widget _buildFavoritesList(List<QueryDocumentSnapshot> favorites, bool isDark, Color textColor) {
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
       itemCount: favorites.length,
@@ -193,11 +195,12 @@ class _FavoritesState extends State<Favorites> {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
+            color: isDark ? const Color(0xFF232323) : Colors.white,
             child: ListTile(
               contentPadding: const EdgeInsets.all(16.0),
               leading: CircleAvatar(
                 radius: 35,
-                backgroundColor: _secondaryColor,
+                backgroundColor: isDark ? const Color(0xFF232323) : _secondaryColor,
                 backgroundImage: doctorData['photoUrl'] != null
                     ? NetworkImage(doctorData['photoUrl'])
                     : const AssetImage('assets/default_doctor.png') as ImageProvider,
@@ -207,7 +210,7 @@ class _FavoritesState extends State<Favorites> {
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
-                  color: _textColor,
+                  color: textColor,
                 ),
               ),
               subtitle: Column(
@@ -217,7 +220,7 @@ class _FavoritesState extends State<Favorites> {
                   Text(
                     doctorData['speciality'] ?? 'Spécialité non spécifiée',
                     style: TextStyle(
-                      color: Colors.grey[600],
+                      color: isDark ? Colors.grey[400] : Colors.grey[600],
                       fontSize: 14,
                     ),
                   ),
@@ -232,9 +235,9 @@ class _FavoritesState extends State<Favorites> {
                           return Row(
                             children: [
                               ...List.generate(5, (index) => Icon(
-                            Icons.star,
-                                color: index < avg.round() ? Colors.amber : Colors.grey[300],
-                            size: 16,
+                                Icons.star,
+                                color: index < avg.round() ? Colors.amber : (isDark ? Colors.grey[600] : Colors.grey[300]),
+                                size: 16,
                               )),
                               const SizedBox(width: 4),
                               Text(
@@ -242,9 +245,9 @@ class _FavoritesState extends State<Favorites> {
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 13,
-                                  color: _textColor,
-                          ),
-                        ),
+                                  color: textColor,
+                                ),
+                              ),
                             ],
                           );
                         },

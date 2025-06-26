@@ -188,11 +188,11 @@ class FirestoreService {
       'motive': motive,
       'createdAt': FieldValue.serverTimestamp(),
     };
-    await _firestore.collection('Appointments').add(appointmentData);
+    await _firestore.collection('consultations').add(appointmentData);
   }
 
   Future<QuerySnapshot> getAppointments() async {
-    return await _firestore.collection('Appointments').get();
+    return await _firestore.collection('consultations').get();
   }
 
   // Méthodes existantes pour les messages (inchangées)
@@ -281,7 +281,7 @@ class FirestoreService {
   // Récupérer les rendez-vous d'un médecin
   Future<QuerySnapshot> getDoctorAppointments(String doctorId) async {
     return await _firestore
-        .collection('Appointments')
+        .collection('consultations')
         .where('doctorId', isEqualTo: doctorId)
         .orderBy('date')
         .orderBy('time')
@@ -401,7 +401,7 @@ class FirestoreService {
   ) async {
     try {
       final QuerySnapshot querySnapshot = await _firestore
-          .collection('Appointments')
+          .collection('consultations')
           .where('doctorId', isEqualTo: doctorId)
           .where('date', isEqualTo: date.toIso8601String().split('T')[0])
           .orderBy('time')
@@ -416,7 +416,7 @@ class FirestoreService {
   // Obtenir l'historique des rendez-vous d'un patient
   Stream<QuerySnapshot> getPatientAppointmentsHistory(String patientId) {
     return _firestore
-        .collection('appointments')
+        .collection('consultations')
         .where('patientId', isEqualTo: patientId)
         .orderBy('timestamp', descending: true)
         .snapshots();
@@ -631,7 +631,7 @@ class FirestoreService {
   Stream<QuerySnapshot> getUpcomingAppointments(String patientId) {
     final now = DateTime.now();
     return _firestore
-        .collection('Appointments')
+        .collection('consultations')
         .where('patientId', isEqualTo: patientId)
         .where('date', isGreaterThanOrEqualTo: now.toIso8601String().split('T')[0])
         .where('status', isEqualTo: 'confirmé')

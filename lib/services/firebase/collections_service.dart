@@ -6,7 +6,7 @@ class CollectionsService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   // Collection References
-  CollectionReference get appointments => _firestore.collection('appointments');
+  CollectionReference get appointments => _firestore.collection('consultations');
   CollectionReference get reminders => _firestore.collection('reminders');
   CollectionReference get documents => _firestore.collection('documents');
   CollectionReference get transactions => _firestore.collection('transactions');

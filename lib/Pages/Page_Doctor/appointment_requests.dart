@@ -23,7 +23,7 @@ class _AppointmentRequestsState extends State<AppointmentRequests> {
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
-            .collection('appointments')
+            .collection('consultations')
             .where('doctorId', isEqualTo: FirebaseAuth.instance.currentUser?.uid)
             .where('status', isEqualTo: 'paid')
             .snapshots(),
@@ -237,7 +237,7 @@ class _AppointmentRequestsState extends State<AppointmentRequests> {
       }
 
       await FirebaseFirestore.instance
-          .collection('appointments')
+          .collection('consultations')
           .doc(appointmentId)
           .update({
         'status': status,
@@ -247,7 +247,7 @@ class _AppointmentRequestsState extends State<AppointmentRequests> {
 
       // Récupérer les informations de la demande
       final appointmentDoc = await FirebaseFirestore.instance
-          .collection('appointments')
+          .collection('consultations')
           .doc(appointmentId)
           .get();
       
