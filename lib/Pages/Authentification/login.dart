@@ -126,6 +126,14 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
       if (doctorDoc.exists) {
         if (!mounted) return;
         final doctorData = doctorDoc.data() as Map<String, dynamic>;
+        if (doctorData['active'] == false) {
+          setState(() {
+            _emailError = 'Votre compte a été bloqué par l\'administrateur.';
+            _isLoading = false;
+          });
+          await _auth.signOut();
+          return;
+        }
         AppRoutes.navigateToHomeDoctor(
           context,
           doctorName: doctorData['name'] ?? '',
@@ -144,6 +152,14 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
       if (patientDoc.exists) {
         if (!mounted) return;
         final patientData = patientDoc.data() as Map<String, dynamic>;
+        if (patientData['active'] == false) {
+          setState(() {
+            _emailError = 'Votre compte a été bloqué par l\'administrateur.';
+            _isLoading = false;
+          });
+          await _auth.signOut();
+          return;
+        }
         AppRoutes.navigateToHome(
           context,
           userName: patientData['name'] ?? '',
@@ -217,6 +233,14 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
       if (doctorDoc.exists) {
         if (!mounted) return;
         final doctorData = doctorDoc.data() as Map<String, dynamic>;
+        if (doctorData['active'] == false) {
+          setState(() {
+            _emailError = 'Votre compte a été bloqué par l\'administrateur.';
+            _isLoading = false;
+          });
+          await _auth.signOut();
+          return;
+        }
         AppRoutes.navigateToHomeDoctor(
           context,
           doctorName: doctorData['name'] ?? '',
@@ -235,6 +259,14 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
       if (patientDoc.exists) {
         if (!mounted) return;
         final patientData = patientDoc.data() as Map<String, dynamic>;
+        if (patientData['active'] == false) {
+          setState(() {
+            _emailError = 'Votre compte a été bloqué par l\'administrateur.';
+            _isLoading = false;
+          });
+          await _auth.signOut();
+          return;
+        }
         AppRoutes.navigateToHome(
           context,
           userName: patientData['name'] ?? '',
@@ -278,8 +310,15 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final Color background = isDark ? const Color(0xFF121212) : Colors.white;
+    final Color fieldColor = isDark ? const Color(0xFF232323) : Colors.white;
+    final Color border = isDark ? Colors.grey[700]! : borderColor;
+    final Color label = isDark ? Colors.grey[300]! : subtitleColor;
+    final Color mainText = isDark ? Colors.white : textColor;
+    final Color subText = isDark ? Colors.grey[400]! : subtitleColor;
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: background,
       body: SafeArea(
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
@@ -293,7 +332,6 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const SizedBox(height: 20),
-                    // Logo de l'application
                     Center(
                       child: Image.asset(
                         'assets/logo.png',
@@ -305,7 +343,7 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
                       'Bienvenue',
                       style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                         fontWeight: FontWeight.bold,
-                        color: textColor,
+                        color: mainText,
                       ),
                       textAlign: TextAlign.center,
                     ),
@@ -313,57 +351,63 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
                     Text(
                       'Connectez-vous pour continuer',
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: subtitleColor,
+                        color: subText,
                       ),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 30),
                     TextField(
                       controller: _emailController,
+                      style: TextStyle(color: mainText),
                       decoration: InputDecoration(
+                        filled: true,
+                        fillColor: fieldColor,
                         labelText: 'Email',
                         errorText: _emailError.isNotEmpty ? _emailError : null,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: borderColor),
+                          borderSide: BorderSide(color: border),
                         ),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: borderColor),
+                          borderSide: BorderSide(color: border),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                           borderSide: const BorderSide(color: primaryColor),
                         ),
-                        prefixIcon: const Icon(Icons.email, color: primaryColor),
-                        labelStyle: const TextStyle(color: subtitleColor),
+                        prefixIcon: Icon(Icons.email, color: isDark ? Colors.blue[300] : primaryColor),
+                        labelStyle: TextStyle(color: label),
                       ),
                       keyboardType: TextInputType.emailAddress,
                     ),
                     const SizedBox(height: 20),
                     TextField(
                       controller: _passwordController,
+                      style: TextStyle(color: mainText),
                       decoration: InputDecoration(
+                        filled: true,
+                        fillColor: fieldColor,
                         labelText: 'Mot de passe',
                         errorText: _passwordError.isNotEmpty ? _passwordError : null,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: borderColor),
+                          borderSide: BorderSide(color: border),
                         ),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: borderColor),
+                          borderSide: BorderSide(color: border),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                           borderSide: const BorderSide(color: primaryColor),
                         ),
-                        prefixIcon: const Icon(Icons.lock, color: primaryColor),
-                        labelStyle: const TextStyle(color: subtitleColor),
+                        prefixIcon: Icon(Icons.lock, color: isDark ? Colors.blue[300] : primaryColor),
+                        labelStyle: TextStyle(color: label),
                         suffixIcon: IconButton(
                           icon: Icon(
                             _obscurePassword ? Icons.visibility : Icons.visibility_off,
-                            color: subtitleColor,
+                            color: label,
                           ),
                           onPressed: () {
                             setState(() {
@@ -397,17 +441,17 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
                             ),
                     ),
                     const SizedBox(height: 20),
-                    const Row(
+                    Row(
                       children: [
-                        Expanded(child: Divider(color: borderColor)),
+                        Expanded(child: Divider(color: border)),
                         Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 16),
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
                           child: Text(
                             'OU',
-                            style: TextStyle(color: subtitleColor),
+                            style: TextStyle(color: subText),
                           ),
                         ),
-                        Expanded(child: Divider(color: borderColor)),
+                        Expanded(child: Divider(color: border)),
                       ],
                     ),
                     const SizedBox(height: 20),
@@ -415,20 +459,21 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
                       onPressed: _isLoading ? null : _signInWithGoogle,
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 15),
-                        side: const BorderSide(color: borderColor),
+                        side: BorderSide(color: border),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
+                        backgroundColor: fieldColor,
                       ),
                       icon: Image.asset(
                         'assets/Google.png',
                         height: 24,
                       ),
-                      label: const Text(
+                      label: Text(
                         'Continuer avec Google',
                         style: TextStyle(
                           fontSize: 16,
-                          color: textColor,
+                          color: mainText,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -439,16 +484,16 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
                       children: [
                         Text(
                           "Vous n'avez pas de compte ?",
-                          style: TextStyle(color: subtitleColor),
+                          style: TextStyle(color: subText),
                         ),
                         TextButton(
                           onPressed: () {
                             Navigator.pushNamed(context, AppRoutes.signup);
                           },
-                          child: const Text(
+                          child: Text(
                             'S\'inscrire',
                             style: TextStyle(
-                              color: primaryColor,
+                              color: isDark ? Colors.blue[300] : primaryColor,
                               fontWeight: FontWeight.bold,
                             ),
                           ),

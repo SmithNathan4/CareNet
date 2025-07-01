@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'user_details_admin.dart';
 
 class UsersAdmin extends StatefulWidget {
   const UsersAdmin({Key? key}) : super(key: key);
@@ -167,8 +168,8 @@ class _UsersAdminState extends State<UsersAdmin> {
                         (data['active'] == false) ? Icons.lock : Icons.lock_open,
                         color: (data['active'] == false) ? Colors.red : Colors.green,
                       ),
-                      tooltip: (data['active'] == false) ? 'Activer' : 'Désactiver',
-                      onPressed: () => _toggleActive(collection, id, data['active'] == false),
+                      tooltip: (data['active'] == false) ? 'Débloquer' : 'Bloquer',
+                      onPressed: () => _toggleActive(collection, id, !(data['active'] == false)),
                     ),
                   IconButton(
                     icon: const Icon(Icons.delete, color: Colors.red),
@@ -177,7 +178,15 @@ class _UsersAdminState extends State<UsersAdmin> {
                   ),
                 ],
               ),
-              onTap: () => _showUserDetails(data),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => UserDetailsAdmin(
+                    userData: data,
+                    userType: _selectedType,
+                  ),
+                ),
+              ),
             );
           },
         );
@@ -187,6 +196,14 @@ class _UsersAdminState extends State<UsersAdmin> {
 
   Future<void> _toggleActive(String collection, String id, bool activate) async {
     await FirebaseFirestore.instance.collection(collection).doc(id).update({'active': activate});
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(activate ? 'Utilisateur débloqué' : 'Utilisateur bloqué'),
+          backgroundColor: activate ? Colors.green : Colors.red,
+        ),
+      );
+    }
   }
 
   Future<void> _deleteUser(String collection, String id) async {
@@ -211,85 +228,79 @@ class _UsersAdminState extends State<UsersAdmin> {
     }
   }
 
-  void _showUserDetails(Map<String, dynamic> data) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(data['name'] ?? 'Détail utilisateur'),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: data.entries.map((e) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
-              child: Text('${e.key} : ${e.value}'),
-            )).toList(),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Fermer')),
-        ],
-      ),
-    );
-  }
-
   void _showCreateUserDialog() {
     final _formKey = GlobalKey<FormState>();
     final nameController = TextEditingController();
     final emailController = TextEditingController();
     final passwordController = TextEditingController();
     bool isDoctor = _selectedType == 'Docteurs';
+    bool obscurePassword = true;
     showDialog(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          title: Text(isDoctor ? 'Créer un compte Docteur' : 'Créer un compte Admin'),
-          content: SingleChildScrollView(
-            child: Form(
-              key: _formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextFormField(
-                    controller: nameController,
-                    decoration: const InputDecoration(labelText: 'Nom complet'),
-                    validator: (v) => v == null || v.isEmpty ? 'Champ requis' : null,
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: Text(isDoctor ? 'Créer un compte Docteur' : 'Créer un compte Admin'),
+              content: SingleChildScrollView(
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextFormField(
+                        controller: nameController,
+                        decoration: const InputDecoration(labelText: 'Nom complet'),
+                        validator: (v) => v == null || v.isEmpty ? 'Champ requis' : null,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: emailController,
+                        decoration: const InputDecoration(labelText: 'Email'),
+                        validator: (v) => v == null || v.isEmpty ? 'Champ requis' : null,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: passwordController,
+                        decoration: InputDecoration(
+                          labelText: 'Mot de passe',
+                          suffixIcon: IconButton(
+                            icon: Icon(obscurePassword ? Icons.visibility : Icons.visibility_off),
+                            onPressed: () {
+                              setState(() {
+                                obscurePassword = !obscurePassword;
+                              });
+                            },
+                          ),
+                        ),
+                        obscureText: obscurePassword,
+                        validator: (v) => v == null || v.length < 6 ? 'Au moins 6 caractères' : null,
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: emailController,
-                    decoration: const InputDecoration(labelText: 'Email'),
-                    validator: (v) => v == null || v.isEmpty ? 'Champ requis' : null,
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: passwordController,
-                    decoration: const InputDecoration(labelText: 'Mot de passe'),
-                    obscureText: true,
-                    validator: (v) => v == null || v.length < 6 ? 'Au moins 6 caractères' : null,
-                  ),
-                ],
+                ),
               ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Annuler'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                if (!_formKey.currentState!.validate()) return;
-                await _createUser(
-                  name: nameController.text.trim(),
-                  email: emailController.text.trim(),
-                  password: passwordController.text.trim(),
-                  isDoctor: isDoctor,
-                );
-                Navigator.pop(context);
-              },
-              child: const Text('Créer'),
-            ),
-          ],
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Annuler'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    if (!_formKey.currentState!.validate()) return;
+                    await _createUser(
+                      name: nameController.text.trim(),
+                      email: emailController.text.trim(),
+                      password: passwordController.text.trim(),
+                      isDoctor: isDoctor,
+                    );
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Créer'),
+                ),
+              ],
+            );
+          },
         );
       },
     );

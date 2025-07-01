@@ -73,7 +73,7 @@ class _HomeDoctorState extends State<HomeDoctor> {
           .collection('UserDoctor')
           .doc(_auth.currentUser?.uid)
           .get();
-      
+
       if (doctorDoc.exists) {
         final data = doctorDoc.data() as Map<String, dynamic>?;
         if (data != null && !data.containsKey('status')) {
@@ -102,22 +102,22 @@ class _HomeDoctorState extends State<HomeDoctor> {
     try {
       // Recherche dans plusieurs champs
       final results = await _firestoreService.searchPatientsByName(query);
-      
+
       // Recherche supplémentaire par email et téléphone
       final emailResults = await _firestoreService.searchPatientsByEmail(query);
       final phoneResults = await _firestoreService.searchPatientsByPhone(query);
-      
+
       // Combiner et dédupliquer les résultats
       final allResults = <Map<String, dynamic>>[];
       final seenIds = <String>{};
-      
+
       void addResult(Map<String, dynamic> result) {
         if (!seenIds.contains(result['id'])) {
           seenIds.add(result['id']);
           allResults.add(result);
         }
       }
-      
+
       // Ajouter les résultats de recherche par nom
       for (final doc in results) {
         final data = doc.data() as Map<String, dynamic>;
@@ -132,7 +132,7 @@ class _HomeDoctorState extends State<HomeDoctor> {
           'status': data['status'] ?? 'actif',
         });
       }
-      
+
       // Ajouter les résultats de recherche par email
       for (final doc in emailResults) {
         final data = doc.data() as Map<String, dynamic>;
@@ -147,7 +147,7 @@ class _HomeDoctorState extends State<HomeDoctor> {
           'status': data['status'] ?? 'actif',
         });
       }
-      
+
       // Ajouter les résultats de recherche par téléphone
       for (final doc in phoneResults) {
         final data = doc.data() as Map<String, dynamic>;
@@ -162,7 +162,7 @@ class _HomeDoctorState extends State<HomeDoctor> {
           'status': data['status'] ?? 'actif',
         });
       }
-      
+
       setState(() {
         _searchResults = allResults;
         _showSearchResults = true;
@@ -262,7 +262,7 @@ class _HomeDoctorState extends State<HomeDoctor> {
       builder: (context, snapshot) {
         final data = snapshot.data?.data() as Map<String, dynamic>?;
         final status = data?['status'] ?? 'hors_ligne';
-        
+
         Color statusColor;
         String statusText;
         switch (status) {
@@ -316,7 +316,7 @@ class _HomeDoctorState extends State<HomeDoctor> {
                 uid: _auth.currentUser!.uid,
                 status: newStatus,
               );
-              
+
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
@@ -598,12 +598,12 @@ class _HomeDoctorState extends State<HomeDoctor> {
         color: Colors.grey[50],
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.grey[200]!),
-        ),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-        Row(
-          children: [
+          Row(
+            children: [
               CircleAvatar(
                 radius: 20,
                 backgroundImage: request['patientPhotoUrl']?.isNotEmpty == true
@@ -612,9 +612,9 @@ class _HomeDoctorState extends State<HomeDoctor> {
                 onBackgroundImageError: (_, __) {
                   const AssetImage('assets/default_profile.png');
                 },
-            ),
+              ),
               const SizedBox(width: 12),
-            Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -624,23 +624,23 @@ class _HomeDoctorState extends State<HomeDoctor> {
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
                       ),
-                ),
+                    ),
                     Text(
                       'Date: ${_formatDate(request['date'])}',
                       style: TextStyle(
                         color: Colors.grey[600],
                         fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
-        ),
-              ),
-      ],
+            ],
           ),
           const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
-      children: [
+            children: [
               TextButton(
                 onPressed: () => _handleAppointmentRequest(requestId, 'refuse'),
                 style: TextButton.styleFrom(
@@ -658,8 +658,8 @@ class _HomeDoctorState extends State<HomeDoctor> {
                 child: const Text('Accepter'),
               ),
             ],
-        ),
-      ],
+          ),
+        ],
       ),
     );
   }
@@ -693,17 +693,17 @@ class _HomeDoctorState extends State<HomeDoctor> {
           'refuse',
         );
       }
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              action == 'accept' 
-                ? 'Rendez-vous accepté' 
-                : 'Rendez-vous refusé'
+                action == 'accept'
+                    ? 'Rendez-vous accepté'
+                    : 'Rendez-vous refusé'
             ),
             backgroundColor: action == 'accept' ? Colors.green : Colors.red,
-            ),
+          ),
         );
       }
     } catch (e) {
@@ -712,7 +712,7 @@ class _HomeDoctorState extends State<HomeDoctor> {
           SnackBar(
             content: Text('Erreur: $e'),
             backgroundColor: Colors.red,
-            ),
+          ),
         );
       }
     }
@@ -744,98 +744,13 @@ class _HomeDoctorState extends State<HomeDoctor> {
             onPressed: () => Navigator.pop(context, _messageController.text),
             child: const Text('Envoyer'),
           ),
-          ],
+        ],
       ),
     );
   }
 
   Widget _buildPatientReviews() {
-    final doctorId = FirebaseAuth.instance.currentUser?.uid;
-    if (doctorId == null) return const SizedBox.shrink();
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('ratings')
-          .where('doctorId', isEqualTo: doctorId)
-          .orderBy('createdAt', descending: true)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        final ratings = snapshot.data?.docs ?? [];
-        if (ratings.isEmpty) {
-          return const Padding(
-            padding: EdgeInsets.all(16),
-            child: Text('Aucun avis patient pour le moment.', style: TextStyle(color: Colors.grey)),
-          );
-        }
-        final avg = ratings.map((r) => (r['rating'] ?? 0.0) as num).fold(0.0, (a, b) => a + b) / ratings.length;
-        return Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  ...List.generate(5, (i) => Icon(
-                    Icons.star,
-                    color: i < avg.round() ? Colors.amber : Colors.grey[300],
-                    size: 22,
-                  )),
-                  const SizedBox(width: 8),
-                  Text(avg.toStringAsFixed(1), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  const SizedBox(width: 8),
-                  Text('(${ratings.length} avis)', style: TextStyle(color: Colors.grey[700])),
-                ],
-              ),
-              const SizedBox(height: 12),
-              ...ratings.take(5).map((r) {
-                final patientName = (r['patientInfo']?['name'] ?? 'Patient').toString();
-                final comment = r['comment'] ?? '';
-                final createdAt = r['createdAt'] != null && r['createdAt'] is Timestamp
-                  ? DateFormat('dd/MM/yyyy').format((r['createdAt'] as Timestamp).toDate())
-                  : '';
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            ...List.generate(5, (i) => Icon(
-                              Icons.star,
-                              color: i < ((r['rating'] ?? 0.0) as num).round() ? Colors.amber : Colors.grey[300],
-                              size: 18,
-                            )),
-                            const SizedBox(width: 8),
-                            Text(createdAt, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
-                            const SizedBox(width: 8),
-                            Text(patientName, style: TextStyle(color: Colors.blueGrey, fontSize: 12)),
-                          ],
-                        ),
-                        if (comment.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          Text(comment),
-                        ],
-                      ],
-                    ),
-                  ),
-                );
-              }).toList(),
-              if (ratings.length > 5)
-                TextButton(
-                  onPressed: () {
-                    // TODO: Naviguer vers une page d'avis complète si besoin
-                  },
-                  child: const Text('Voir tous les avis'),
-                ),
-            ],
-          ),
-        );
-      },
-    );
+    return const SizedBox.shrink();
   }
 
   // Contenu de la page d'accueil sans AppBar
@@ -873,14 +788,15 @@ class _HomeDoctorState extends State<HomeDoctor> {
     final isTablet = screenWidth > 600;
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    
+    final doctorId = FirebaseAuth.instance.currentUser?.uid;
+
     return Container(
       padding: EdgeInsets.all(isTablet ? 30 : 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Statistiques du jour',
+            'Statistiques',
             style: TextStyle(
               fontSize: isTablet ? 22 : 18,
               fontWeight: FontWeight.bold,
@@ -890,40 +806,60 @@ class _HomeDoctorState extends State<HomeDoctor> {
           SizedBox(height: isTablet ? 24 : 16),
           Row(
             children: [
+              // Bloc 1 : Nombre total de patients ayant consulté
               Expanded(
                 child: StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance
                       .collection('consultations')
-                      .where('doctorId', isEqualTo: FirebaseAuth.instance.currentUser?.uid)
-                      .where('status', isEqualTo: 'completed')
-                      .where('paymentStatus', isEqualTo: 'paid')
+                      .where('doctorId', isEqualTo: doctorId)
                       .snapshots(),
                   builder: (context, snapshot) {
-                    final paidPatientsCount = snapshot.data?.docs.length ?? 0;
+                    final consultations = snapshot.data?.docs ?? [];
+                    final uniquePatients = consultations.map((c) => c['patientId']).toSet().length;
                     return _buildStatCard(
-                      'Patients payés',
-                      '$paidPatientsCount',
+                      'Patients total',
+                      '$uniquePatients',
                       Icons.people,
-                      Colors.green,
+                      Colors.blue,
                     );
                   },
                 ),
               ),
               SizedBox(width: isTablet ? 20 : 12),
+              // Bloc 2 : Consultations en cours
               Expanded(
                 child: StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance
-                      .collection('conversations')
-                      .where('doctorId', isEqualTo: FirebaseAuth.instance.currentUser?.uid)
-                      .where('hasUnreadMessages', isEqualTo: true)
+                      .collection('consultations')
+                      .where('doctorId', isEqualTo: doctorId)
+                      .where('status', whereIn: ['active', 'en cours'])
                       .snapshots(),
                   builder: (context, snapshot) {
-                    final pendingMessagesCount = snapshot.data?.docs.length ?? 0;
+                    final ongoing = snapshot.data?.docs.length ?? 0;
                     return _buildStatCard(
-                      'Messages en attente',
-                      '$pendingMessagesCount',
-                      Icons.message,
+                      'Consultations en cours',
+                      '$ongoing',
+                      Icons.schedule,
                       Colors.orange,
+                    );
+                  },
+                ),
+              ),
+              SizedBox(width: isTablet ? 20 : 12),
+              // Bloc 3 : Nombre d'évaluations
+              Expanded(
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('ratings')
+                      .where('doctorId', isEqualTo: doctorId)
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    final nbRatings = snapshot.data?.docs.length ?? 0;
+                    return _buildStatCard(
+                      'Évaluations',
+                      '$nbRatings',
+                      Icons.star,
+                      Colors.amber,
                     );
                   },
                 ),
@@ -940,7 +876,7 @@ class _HomeDoctorState extends State<HomeDoctor> {
     final isTablet = screenWidth > 600;
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    
+
     return Container(
       padding: EdgeInsets.all(isTablet ? 20 : 16),
       decoration: BoxDecoration(
@@ -1000,7 +936,6 @@ class _HomeDoctorState extends State<HomeDoctor> {
   Widget _buildQuickActions() {
     final screenWidth = MediaQuery.of(context).size.width;
     final isTablet = screenWidth > 600;
-    final isMobile = screenWidth <= 600;
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     return Container(
@@ -1017,94 +952,42 @@ class _HomeDoctorState extends State<HomeDoctor> {
             ),
           ),
           SizedBox(height: isTablet ? 24 : 12),
-          GridView.count(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: isTablet ? 3 : 2,
-            crossAxisSpacing: isTablet ? 24 : 12,
-            mainAxisSpacing: isTablet ? 24 : 12,
-            childAspectRatio: isTablet ? 1.4 : 1.05,
-            children: [
-              _buildActionCard(
-                'Nouveaux rendez-vous',
-                Icons.calendar_today,
-                Colors.blue,
-                () => Navigator.pushNamed(context, AppRoutes.appointmentRequests),
+          GestureDetector(
+            onTap: () => Navigator.pushNamed(context, '/doctor_consultations_history'),
+            child: Container(
+              padding: EdgeInsets.all(isTablet ? 24 : 20),
+              decoration: BoxDecoration(
+                color: Colors.blue[50],
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.blue.withOpacity(0.08),
+                    spreadRadius: 1,
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
-              _buildActionCard(
-                'Mes patients',
-                Icons.people,
-                Colors.green,
-                () => Navigator.pushNamed(context, AppRoutes.patientList),
+              child: Row(
+                children: [
+                  Icon(Icons.medical_services, color: Colors.blue, size: isTablet ? 32 : 28),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Text(
+                      'Mes consultations',
+                      style: TextStyle(
+                        fontSize: isTablet ? 18 : 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue[900],
+                      ),
+                    ),
+                  ),
+                  const Icon(Icons.arrow_forward_ios, color: Colors.blue),
+                ],
               ),
-              _buildActionCard(
-                'Messages',
-                Icons.message,
-                Colors.orange,
-                () => Navigator.pushNamed(context, AppRoutes.conversations),
-              ),
-              _buildActionCard(
-                'Mon profil',
-                Icons.person,
-                Colors.purple,
-                () => Navigator.pushNamed(context, AppRoutes.profilDoctor),
-              ),
-            ],
+            ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildActionCard(String title, IconData icon, Color color, VoidCallback onTap) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isTablet = screenWidth > 600;
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: EdgeInsets.all(isTablet ? 24 : 20),
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: isDark ? Colors.black.withOpacity(0.3) : Colors.grey.withOpacity(0.1),
-              spreadRadius: 1,
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: EdgeInsets.all(isTablet ? 16 : 12),
-              decoration: BoxDecoration(
-                color: color.withOpacity(isDark ? 0.2 : 0.1),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Icon(
-                icon,
-                color: color,
-                size: isTablet ? 32 : 28,
-              ),
-            ),
-            SizedBox(height: isTablet ? 16 : 12),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: isTablet ? 16 : 14,
-                fontWeight: FontWeight.w600,
-                color: isDark ? Colors.white : Colors.black87,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -1152,7 +1035,7 @@ class _HomeDoctorState extends State<HomeDoctor> {
               }
 
               final appointments = snapshot.data!.docs;
-              
+
               if (appointments.isEmpty) {
                 return Container(
                   padding: const EdgeInsets.all(20),
@@ -1273,7 +1156,7 @@ class _HomeDoctorState extends State<HomeDoctor> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final userId = _auth.currentUser?.uid ?? '';
-    
+
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF121212) : const Color(0xFFF5F5F5),
       appBar: _buildHomeAppBar(),
@@ -1324,13 +1207,13 @@ class _HomeDoctorState extends State<HomeDoctor> {
               BottomNavigationBarItem(
                 icon: (totalUnread > 0 && _currentMainIndex != 2)
                     ? badges.Badge(
-                        badgeContent: Text('$totalUnread', style: const TextStyle(color: Colors.white, fontSize: 10)),
-                        badgeStyle: const badges.BadgeStyle(
-                          badgeColor: Colors.blue,
-                          padding: EdgeInsets.all(5),
-                        ),
-                        child: const Icon(Icons.message),
-                      )
+                  badgeContent: Text('$totalUnread', style: const TextStyle(color: Colors.white, fontSize: 10)),
+                  badgeStyle: const badges.BadgeStyle(
+                    badgeColor: Colors.blue,
+                    padding: EdgeInsets.all(5),
+                  ),
+                  child: const Icon(Icons.message),
+                )
                     : const Icon(Icons.message),
                 label: 'Messages',
               ),
@@ -1359,8 +1242,8 @@ class _HomeDoctorState extends State<HomeDoctor> {
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
             return Text(
-              'Chargement...', 
-              style: TextStyle(color: isDark ? Colors.white : Colors.black87)
+                'Chargement...',
+                style: TextStyle(color: isDark ? Colors.white : Colors.black87)
             );
           }
           final data = snapshot.data!.data() as Map<String, dynamic>?;
@@ -1439,8 +1322,8 @@ class _HomeDoctorState extends State<HomeDoctor> {
                       color: isDark ? statusColor.withOpacity(0.2) : statusColor.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: isDark ? statusColor.withOpacity(0.5) : statusColor.withOpacity(0.3), 
-                        width: 1
+                          color: isDark ? statusColor.withOpacity(0.5) : statusColor.withOpacity(0.3),
+                          width: 1
                       ),
                     ),
                     child: DropdownButton<String>(

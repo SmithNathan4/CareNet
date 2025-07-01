@@ -35,6 +35,7 @@ class _MyProfileState extends State<MyProfile> {
   bool _hasMedicalHistory = false;
   String? _medicalHistoryDescription;
   String? _profileImageUrl; // Pour l'image de profil
+  String? _address;
 
   // Listes déroulantes avec codes pays améliorés
   final List<Map<String, String>> _countryCodes = [
@@ -89,6 +90,7 @@ class _MyProfileState extends State<MyProfile> {
           _name = data['name']?.toString() ?? user.displayName ?? '';
           _profileImageUrl = data['profileImageUrl']?.toString() ?? user.photoURL;
           _phoneNumber = data['phoneNumber']?.toString() ?? '';
+          _address = data['address']?.toString() ?? '';
 
           // Gestion de _selectedCountryCode
           _selectedCountryCode = _countryCodes[0]['code']; // Par défaut
@@ -177,6 +179,7 @@ class _MyProfileState extends State<MyProfile> {
         'hasMedicalHistory': _hasMedicalHistory,
         'medicalHistoryDescription': _medicalHistoryDescription,
         'profileImageUrl': _profileImageUrl,
+        'address': _address,
       }, SetOptions(merge: true));
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -227,6 +230,9 @@ class _MyProfileState extends State<MyProfile> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final Color cardColor = isDark ? const Color(0xFF232323) : Colors.white;
+    final Color borderColor = isDark ? Colors.grey[700]! : Colors.grey.shade300;
+    final Color textColor = isDark ? Colors.white : Colors.grey.shade800;
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF121212) : Colors.white,
       appBar: _buildAppBar(isDark),
@@ -247,15 +253,17 @@ class _MyProfileState extends State<MyProfile> {
                       icon: Icons.person_outline,
                       child: TextFormField(
                         initialValue: _name ?? '',
+                        style: TextStyle(color: textColor),
                         decoration: InputDecoration(
                           hintText: 'Entrez votre nom complet',
+                          hintStyle: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(color: Colors.grey.shade300),
+                            borderSide: BorderSide(color: borderColor),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: Colors.blue, width: 2),
+                            borderSide: BorderSide(color: isDark ? Colors.blue[300]! : Colors.blue, width: 2),
                           ),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 16,
@@ -349,6 +357,38 @@ class _MyProfileState extends State<MyProfile> {
                             ),
                           ),
                         ],
+                      ),
+                    ),
+
+                    _buildFormCard(
+                      title: 'Adresse',
+                      icon: Icons.location_on_outlined,
+                      child: TextFormField(
+                        initialValue: _address ?? '',
+                        decoration: InputDecoration(
+                          hintText: 'Entrez votre adresse',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: Colors.blue, width: 2),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Veuillez entrer votre adresse';
+                          }
+                          return null;
+                        },
+                        onChanged: (value) {
+                          _address = value;
+                        },
                       ),
                     ),
 
@@ -536,7 +576,7 @@ class _MyProfileState extends State<MyProfile> {
                         children: [
                           Container(
                             decoration: BoxDecoration(
-                              color: Colors.grey.shade50,
+                              color: isDark ? const Color(0xFF232323) : Colors.grey.shade50,
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: SwitchListTile(
@@ -623,11 +663,45 @@ class _MyProfileState extends State<MyProfile> {
 
   PreferredSizeWidget _buildAppBar(bool isDark) {
     return AppBar(
-      title: const Text('Mon Profil'),
       backgroundColor: isDark ? const Color(0xFF1E1E1E) : _primaryColor,
       elevation: 0,
       shape: null,
       iconTheme: const IconThemeData(color: Colors.white),
+      title: Row(
+        children: [
+          CircleAvatar(
+            radius: 20,
+            backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200],
+            backgroundImage: (_profileImageUrl != null && _profileImageUrl!.isNotEmpty)
+                ? (_profileImageUrl!.startsWith('http')
+                    ? NetworkImage(_profileImageUrl!)
+                    : FileImage(File(_profileImageUrl!)) as ImageProvider)
+                : const AssetImage('assets/default_profile.png'),
+          ),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                _name?.isNotEmpty == true ? _name! : 'Nom non défini',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+              const Text(
+                'Patient',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.white70,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -684,6 +758,7 @@ class _MyProfileState extends State<MyProfile> {
   }
 
   Widget _buildProfileHeader() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -720,16 +795,11 @@ class _MyProfileState extends State<MyProfile> {
                   ],
                 ),
                 child: CircleAvatar(
-                  radius: 58,
-                  backgroundColor: Colors.grey.shade200,
-                  backgroundImage: _getProfileImage(),
-                  child: _profileImageUrl == null || _profileImageUrl!.isEmpty
-                      ? Icon(
-                          Icons.person,
-                          size: 60,
-                          color: Colors.grey.shade600,
-                        )
-                      : null,
+                  radius: 48,
+                  backgroundColor: isDark ? Colors.grey[800] : Colors.grey[200],
+                  backgroundImage: (_profileImageUrl != null && _profileImageUrl!.isNotEmpty)
+                      ? NetworkImage(_profileImageUrl!)
+                      : const AssetImage('assets/default_profile.png') as ImageProvider,
                 ),
               ),
               Positioned(
@@ -795,14 +865,17 @@ class _MyProfileState extends State<MyProfile> {
     required Widget child,
     IconData? icon,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final Color cardColor = isDark ? const Color(0xFF232323) : Colors.white;
+    final Color textColor = isDark ? Colors.white : Colors.grey.shade800;
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cardColor,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
+            color: isDark ? Colors.black.withOpacity(0.3) : Colors.grey.withOpacity(0.1),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -816,7 +889,7 @@ class _MyProfileState extends State<MyProfile> {
             Row(
               children: [
                 if (icon != null) ...[
-                  Icon(icon, color: Colors.blue.shade600, size: 20),
+                  Icon(icon, color: isDark ? Colors.blue[300] : Colors.blue.shade600, size: 20),
                   const SizedBox(width: 8),
                 ],
                 Text(
@@ -824,7 +897,7 @@ class _MyProfileState extends State<MyProfile> {
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
-                    color: Colors.grey.shade800,
+                    color: textColor,
                   ),
                 ),
               ],

@@ -426,15 +426,6 @@ class _DoctorListState extends State<DoctorList> {
             final isMobile = screenWidth <= 600;
             final crossAxisCount = isDesktop ? 3 : isTablet ? 2 : 1;
             return Scaffold(
-              appBar: AppBar(
-                title: const Text('Liste des Médecins'),
-                leading: showBack
-                    ? IconButton(
-                        icon: const Icon(Icons.arrow_back),
-                        onPressed: () => Navigator.of(context).pop(),
-                      )
-                    : null,
-              ),
               backgroundColor: isDark ? const Color(0xFF121212) : Colors.white,
               body: SafeArea(
                 child: Padding(

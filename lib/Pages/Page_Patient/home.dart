@@ -10,7 +10,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'reminders.dart';
-import 'documents.dart';
 import 'package:provider/provider.dart';
 import '../../providers/theme_provider.dart';
 import 'package:badges/badges.dart' as badges;
@@ -49,6 +48,7 @@ class _HomeState extends State<Home> {
     _searchController.addListener(_onSearchChanged);
     _loadAllDoctors();
     _checkAuthState();
+    _checkActiveStatus();
   }
 
   @override
@@ -260,7 +260,52 @@ class _HomeState extends State<Home> {
                 automaticallyImplyLeading: false,
                 backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
                 elevation: 0,
-                title: _buildPatientInfo(),
+                title: FutureBuilder<DocumentSnapshot>(
+                  future: _firestoreService.getPatient(widget.userId),
+                  builder: (context, snapshot) {
+                    String? photoUrl;
+                    String userName = widget.userName;
+                    if (snapshot.hasData && snapshot.data != null) {
+                      final userData = snapshot.data!.data() as Map<String, dynamic>?;
+                      photoUrl = userData?['photoUrl'] as String?;
+                      userName = userData?['name'] as String? ?? widget.userName;
+                    }
+                    photoUrl = photoUrl ?? widget.userPhoto ?? FirebaseAuth.instance.currentUser?.photoURL;
+                    return Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 20,
+                          backgroundImage: (photoUrl != null && photoUrl.isNotEmpty)
+                              ? NetworkImage(photoUrl)
+                              : const AssetImage('assets/default_profile.png') as ImageProvider,
+                        ),
+                        const SizedBox(width: 12),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              userName,
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? Colors.white : Colors.black87,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              'Patient',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: isDark ? Colors.grey[300] : Colors.grey,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    );
+                  },
+                ),
                 actions: [
                   IconButton(
                     icon: Icon(Icons.favorite_border, color: isDark ? Colors.white : Colors.black87),
@@ -670,14 +715,6 @@ class _HomeState extends State<Home> {
                     },
                   ),
                   _buildActionButton(
-                    icon: Icons.history,
-                    label: 'Historique',
-                    color: Colors.green,
-                    onTap: () {
-                      Navigator.pushNamed(context, AppRoutes.medicalHistory);
-                    },
-                  ),
-                  _buildActionButton(
                     icon: Icons.alarm,
                     label: 'Rappels',
                     color: Colors.purple,
@@ -686,19 +723,6 @@ class _HomeState extends State<Home> {
                         context,
                         MaterialPageRoute(
                           builder: (context) => const Reminders(),
-                        ),
-                      );
-                    },
-                  ),
-                  _buildActionButton(
-                    icon: Icons.folder,
-                    label: 'Documents',
-                    color: Colors.teal,
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const Documents(),
                         ),
                       );
                     },
@@ -941,6 +965,21 @@ class _HomeState extends State<Home> {
     if (!authService.isLoggedIn) {
       if (mounted) {
         Navigator.pushReplacementNamed(context, AppRoutes.login);
+      }
+    }
+  }
+
+  Future<void> _checkActiveStatus() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final doc = await FirebaseFirestore.instance.collection('UserPatient').doc(user.uid).get();
+    if (doc.exists && doc.data()?['active'] == false) {
+      await FirebaseAuth.instance.signOut();
+      if (mounted) {
+        Navigator.pushReplacementNamed(context, AppRoutes.login);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Votre compte a été bloqué par l\'administrateur.'), backgroundColor: Colors.red),
+        );
       }
     }
   }

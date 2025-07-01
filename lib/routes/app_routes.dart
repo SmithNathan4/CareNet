@@ -12,11 +12,9 @@ import '../Pages/Page_Doctor/PatientList.dart';
 import '../Pages/Page_Doctor/PatientPage.dart';
 import '../Pages/Page_Doctor/appointment_requests.dart';
 import '../Pages/Page_Patient/doctor_list.dart';
-import '../Pages/Page_Patient/medical_history.dart';
 import '../Pages/Page_Patient/my_appointments.dart';
 import '../Pages/Page_Patient/appointment.dart';
 import '../Pages/Page_Patient/reminders.dart';
-import '../Pages/Page_Patient/documents.dart';
 import '../Pages/ParametreDoctor/ProfilDoctor.dart';
 import '../Pages/ParametreDoctor/settingsDoctor.dart';
 import '../Pages/ParametreDoctor/change_password_doctor.dart';
@@ -33,6 +31,7 @@ import '../services/firebase/auth.dart';
 import '../Pages/Page_Admin/HomeAdmin.dart';
 import '../Pages/Page_Admin/settings_admin.dart';
 import '../Pages/Page_Admin/users_admin.dart';
+import '../Pages/Page_Doctor/doctor_consultations_history.dart';
 
 
 class AppRoutes {
@@ -46,12 +45,10 @@ class AppRoutes {
   static const String signup = '/signup';
   static const String myProfile = '/myProfile';
   static const String myAppointments = '/myAppointments';
-  static const String medicalHistory = '/medicalHistory';
   static const String doctorPage = '/doctorPage';
   static const String conversations = '/conversations';
   static const String appointment = 'appointment';
   static const String reminders = '/reminders';
-  static const String documents = '/documents';
   static const String admin = '/admin';
 
   // Routes des paramètres patient
@@ -165,12 +162,6 @@ class AppRoutes {
             appointmentService: AppointmentService(),
           ),
         );
-      case medicalHistory:
-        return MaterialPageRoute(
-          builder: (_) => MedicalHistory(
-            firestoreService: firestoreService,
-          ),
-        );
       case doctorPage:
         return MaterialPageRoute(
           builder: (_) => DoctorPage(
@@ -200,8 +191,6 @@ class AppRoutes {
         );
       case reminders:
         return MaterialPageRoute(builder: (_) => const Reminders());
-      case documents:
-        return MaterialPageRoute(builder: (_) => const Documents());
       case admin:
         return MaterialPageRoute(
           builder: (_) => const HomeAdmin(),
@@ -210,6 +199,8 @@ class AppRoutes {
         return MaterialPageRoute(builder: (_) => const SettingsAdmin());
       case usersAdmin:
         return MaterialPageRoute(builder: (_) => const UsersAdmin());
+      case '/doctor_consultations_history':
+        return MaterialPageRoute(builder: (_) => const DoctorConsultationsHistory());
       default:
         return MaterialPageRoute(
           builder: (_) => Scaffold(
@@ -396,16 +387,8 @@ class AppRoutes {
     Navigator.pushNamed(context, myAppointments);
   }
 
-  static void navigateToMedicalHistory(BuildContext context) {
-    Navigator.pushNamed(context, medicalHistory);
-  }
-
   static void navigateToReminders(BuildContext context) {
     Navigator.pushNamed(context, reminders);
-  }
-
-  static void navigateToDocuments(BuildContext context) {
-    Navigator.pushNamed(context, documents);
   }
 
   // Méthodes de navigation sécurisées

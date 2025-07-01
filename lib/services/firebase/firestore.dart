@@ -21,6 +21,7 @@ class FirestoreService {
     List<String>? favorites,
     String role = 'patient',
     String profileImageUrl = '',
+    String address = '',
   }) async {
     final patientDocRef = _firestore.collection('UserPatient').doc(uid);
     await patientDocRef.set({
@@ -37,6 +38,7 @@ class FirestoreService {
       'createdAt': FieldValue.serverTimestamp(),
       'favorites': favorites ?? [],
       'role': role, // Ajout du rôle ici
+      'address': address,
     }, SetOptions(merge: true));
   }
 

@@ -17,7 +17,6 @@ class _SignupState extends State<Signup> with TickerProviderStateMixin {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController = TextEditingController();
-  final TextEditingController _phoneController = TextEditingController();
   final FirebaseAuth _auth = FirebaseAuth.instance;
   String _errorMessage = '';
   bool _obscurePassword = true;
@@ -92,7 +91,6 @@ class _SignupState extends State<Signup> with TickerProviderStateMixin {
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
-    _phoneController.dispose();
     super.dispose();
   }
 
@@ -112,12 +110,6 @@ class _SignupState extends State<Signup> with TickerProviderStateMixin {
   // Validation du nom
   bool _isValidName(String name) {
     return name.trim().length >= 2 && name.trim().length <= 50;
-  }
-
-  // Validation du numéro de téléphone
-  bool _isValidPhone(String phone) {
-    final phoneRegex = RegExp(r'^[0-9+\-\s\(\)]{8,15}$');
-    return phoneRegex.hasMatch(phone);
   }
 
   Future<void> _registerWithEmailAndPassword() async {
@@ -142,7 +134,6 @@ class _SignupState extends State<Signup> with TickerProviderStateMixin {
         weight: 0,
         bloodGroup: '',
         medicalHistoryDescription: '',
-        phoneNumber: _phoneController.text,
         favorites: [],
       );
 
@@ -188,8 +179,15 @@ class _SignupState extends State<Signup> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final Color background = isDark ? const Color(0xFF121212) : Colors.white;
+    final Color fieldColor = isDark ? const Color(0xFF232323) : Colors.white;
+    final Color border = isDark ? Colors.grey[700]! : borderColor;
+    final Color label = isDark ? Colors.grey[300]! : subtitleColor;
+    final Color mainText = isDark ? Colors.white : textColor;
+    final Color subText = isDark ? Colors.grey[400]! : subtitleColor;
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: background,
       body: SafeArea(
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
@@ -203,7 +201,6 @@ class _SignupState extends State<Signup> with TickerProviderStateMixin {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const SizedBox(height: 20),
-                    // Logo de l'application
                     Center(
                       child: Image.asset(
                         'assets/logo.png',
@@ -215,7 +212,7 @@ class _SignupState extends State<Signup> with TickerProviderStateMixin {
                       'Créer un compte',
                       style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                         fontWeight: FontWeight.bold,
-                        color: textColor,
+                        color: mainText,
                       ),
                       textAlign: TextAlign.center,
                     ),
@@ -223,12 +220,19 @@ class _SignupState extends State<Signup> with TickerProviderStateMixin {
                     Text(
                       'Rejoignez CareNet pour une meilleure santé',
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: subtitleColor,
+                        color: subText,
                       ),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 30),
-                    _buildFormFields(),
+                    _buildFormFields(
+                      isDark: isDark,
+                      fieldColor: fieldColor,
+                      border: border,
+                      label: label,
+                      mainText: mainText,
+                      subText: subText,
+                    ),
                     if (_errorMessage.isNotEmpty) ...[
                       const SizedBox(height: 20),
                       _buildErrorMessage(),
@@ -236,9 +240,9 @@ class _SignupState extends State<Signup> with TickerProviderStateMixin {
                     const SizedBox(height: 32),
                     _buildSignupButton(),
                     const SizedBox(height: 24),
-                    _buildDivider(),
+                    _buildDivider(subText, border),
                     const SizedBox(height: 24),
-                    _buildLoginPrompt(),
+                    _buildLoginPrompt(isDark, subText),
                   ],
                 ),
               ),
@@ -249,29 +253,39 @@ class _SignupState extends State<Signup> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildFormFields() {
+  Widget _buildFormFields({
+    required bool isDark,
+    required Color fieldColor,
+    required Color border,
+    required Color label,
+    required Color mainText,
+    required Color subText,
+  }) {
     return Column(
       children: [
         TextField(
           controller: _nameController,
+          style: TextStyle(color: mainText),
           decoration: InputDecoration(
+            filled: true,
+            fillColor: fieldColor,
             labelText: 'Nom complet',
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: borderColor),
+              borderSide: BorderSide(color: border),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: borderColor),
+              borderSide: BorderSide(color: border),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: const BorderSide(color: primaryColor),
             ),
-            prefixIcon: const Icon(Icons.person, color: primaryColor),
-            labelStyle: const TextStyle(color: subtitleColor),
+            prefixIcon: Icon(Icons.person, color: isDark ? Colors.blue[300] : primaryColor),
+            labelStyle: TextStyle(color: label),
             helperText: 'Entre 2 et 50 caractères',
-            helperStyle: const TextStyle(fontSize: 12, color: subtitleColor),
+            helperStyle: TextStyle(fontSize: 12, color: subText),
           ),
           onChanged: (value) {
             if (value.isNotEmpty) {
@@ -288,24 +302,27 @@ class _SignupState extends State<Signup> with TickerProviderStateMixin {
         const SizedBox(height: 20),
         TextField(
           controller: _emailController,
+          style: TextStyle(color: mainText),
           decoration: InputDecoration(
+            filled: true,
+            fillColor: fieldColor,
             labelText: 'Email',
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: borderColor),
+              borderSide: BorderSide(color: border),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: borderColor),
+              borderSide: BorderSide(color: border),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: const BorderSide(color: primaryColor),
             ),
-            prefixIcon: const Icon(Icons.email, color: primaryColor),
-            labelStyle: const TextStyle(color: subtitleColor),
+            prefixIcon: Icon(Icons.email, color: isDark ? Colors.blue[300] : primaryColor),
+            labelStyle: TextStyle(color: label),
             helperText: 'exemple@domaine.com',
-            helperStyle: const TextStyle(fontSize: 12, color: subtitleColor),
+            helperStyle: TextStyle(fontSize: 12, color: subText),
             suffixIcon: _emailController.text.isNotEmpty
                 ? Icon(
                     _isValidEmail(_emailController.text) ? Icons.check_circle : Icons.error,
@@ -327,24 +344,27 @@ class _SignupState extends State<Signup> with TickerProviderStateMixin {
         const SizedBox(height: 20),
         TextField(
           controller: _passwordController,
+          style: TextStyle(color: mainText),
           decoration: InputDecoration(
+            filled: true,
+            fillColor: fieldColor,
             labelText: 'Mot de passe',
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: borderColor),
+              borderSide: BorderSide(color: border),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: borderColor),
+              borderSide: BorderSide(color: border),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: const BorderSide(color: primaryColor),
             ),
-            prefixIcon: const Icon(Icons.lock, color: primaryColor),
-            labelStyle: const TextStyle(color: subtitleColor),
+            prefixIcon: Icon(Icons.lock, color: isDark ? Colors.blue[300] : primaryColor),
+            labelStyle: TextStyle(color: label),
             helperText: 'Min. 8 caractères, majuscule, minuscule, chiffre, caractère spécial',
-            helperStyle: const TextStyle(fontSize: 12, color: subtitleColor),
+            helperStyle: TextStyle(fontSize: 12, color: subText),
             suffixIcon: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -356,7 +376,7 @@ class _SignupState extends State<Signup> with TickerProviderStateMixin {
                 IconButton(
                   icon: Icon(
                     _obscurePassword ? Icons.visibility : Icons.visibility_off,
-                    color: subtitleColor,
+                    color: label,
                   ),
                   onPressed: () {
                     setState(() {
@@ -381,22 +401,25 @@ class _SignupState extends State<Signup> with TickerProviderStateMixin {
         const SizedBox(height: 20),
         TextField(
           controller: _confirmPasswordController,
+          style: TextStyle(color: mainText),
           decoration: InputDecoration(
+            filled: true,
+            fillColor: fieldColor,
             labelText: 'Confirmer le mot de passe',
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: borderColor),
+              borderSide: BorderSide(color: border),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: borderColor),
+              borderSide: BorderSide(color: border),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: const BorderSide(color: primaryColor),
             ),
-            prefixIcon: const Icon(Icons.lock, color: primaryColor),
-            labelStyle: const TextStyle(color: subtitleColor),
+            prefixIcon: Icon(Icons.lock, color: isDark ? Colors.blue[300] : primaryColor),
+            labelStyle: TextStyle(color: label),
             suffixIcon: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -408,7 +431,7 @@ class _SignupState extends State<Signup> with TickerProviderStateMixin {
                 IconButton(
                   icon: Icon(
                     _obscureConfirmPassword ? Icons.visibility : Icons.visibility_off,
-                    color: subtitleColor,
+                    color: label,
                   ),
                   onPressed: () {
                     setState(() {
@@ -424,45 +447,6 @@ class _SignupState extends State<Signup> with TickerProviderStateMixin {
             setState(() {
               if (value.isNotEmpty && _passwordController.text.isNotEmpty && value != _passwordController.text) {
                 _errorMessage = 'Les mots de passe ne correspondent pas';
-              } else {
-                _errorMessage = '';
-              }
-            });
-          },
-        ),
-        const SizedBox(height: 20),
-        TextField(
-          controller: _phoneController,
-          decoration: InputDecoration(
-            labelText: 'Numéro de téléphone',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: borderColor),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: borderColor),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: primaryColor),
-            ),
-            prefixIcon: const Icon(Icons.phone, color: primaryColor),
-            labelStyle: const TextStyle(color: subtitleColor),
-            helperText: 'Format: 0123456789 ou +237 6 23 45 67 89',
-            helperStyle: const TextStyle(fontSize: 12, color: subtitleColor),
-            suffixIcon: _phoneController.text.isNotEmpty
-                ? Icon(
-                    _isValidPhone(_phoneController.text) ? Icons.check_circle : Icons.error,
-                    color: _isValidPhone(_phoneController.text) ? successColor : errorColor,
-                  )
-                : null,
-          ),
-          keyboardType: TextInputType.phone,
-          onChanged: (value) {
-            setState(() {
-              if (value.isNotEmpty && !_isValidPhone(value)) {
-                _errorMessage = 'Veuillez entrer un numéro de téléphone valide';
               } else {
                 _errorMessage = '';
               }
@@ -520,38 +504,38 @@ class _SignupState extends State<Signup> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildDivider() {
-    return const Row(
+  Widget _buildDivider(Color subText, Color border) {
+    return Row(
       children: [
-        Expanded(child: Divider(color: borderColor)),
+        Expanded(child: Divider(color: border)),
         Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Text(
             'OU',
-            style: TextStyle(color: subtitleColor),
+            style: TextStyle(color: subText),
           ),
         ),
-        Expanded(child: Divider(color: borderColor)),
+        Expanded(child: Divider(color: border)),
       ],
     );
   }
 
-  Widget _buildLoginPrompt() {
+  Widget _buildLoginPrompt(bool isDark, Color subText) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Text(
           'Vous avez déjà un compte ?',
-          style: TextStyle(color: subtitleColor),
+          style: TextStyle(color: subText),
         ),
         TextButton(
           onPressed: () {
             Navigator.pushNamed(context, AppRoutes.login);
           },
-          child: const Text(
+          child: Text(
             'Se connecter',
             style: TextStyle(
-              color: primaryColor,
+              color: isDark ? Colors.blue[300] : primaryColor,
               fontWeight: FontWeight.bold,
             ),
           ),

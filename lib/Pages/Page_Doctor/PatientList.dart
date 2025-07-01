@@ -40,12 +40,11 @@ class _PatientListState extends State<PatientList> {
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white : _textColor,
+                  color: isDark ? Colors.white : Colors.black87,
                 ),
               ),
-            )
-          else
-            // Titre pour la navigation sans AppBar
+            ),
+          if (!widget.showAppBar)
             Container(
               width: double.infinity,
               padding: const EdgeInsets.fromLTRB(20.0, 24.0, 20.0, 20.0),
@@ -65,7 +64,7 @@ class _PatientListState extends State<PatientList> {
                 style: TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white : _textColor,
+                  color: isDark ? Colors.white : Colors.black87,
                 ),
               ),
             ),
@@ -179,6 +178,23 @@ class _PatientListState extends State<PatientList> {
                         subtitle: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            if (patientData['address'] != null && patientData['address'].toString().isNotEmpty)
+                              Row(
+                                children: [
+                                  Icon(Icons.location_on, size: 14, color: isDark ? Colors.grey[400] : Colors.grey[500]),
+                                  const SizedBox(width: 4),
+                                  Flexible(
+                                    child: Text(
+                                      patientData['address'],
+                                      style: TextStyle(
+                                        color: isDark ? Colors.grey[400] : Colors.grey[500],
+                                        fontSize: 12,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             const SizedBox(height: 4),
                             Text(
                               patientData['email'] ?? 'Non renseigné',
@@ -219,15 +235,13 @@ class _PatientListState extends State<PatientList> {
       ),
     );
 
-    // Si showAppBar est true, on retourne un Scaffold complet
+    // Bloc de retour final, en dehors de la liste des widgets
     if (widget.showAppBar) {
       return Scaffold(
         backgroundColor: Colors.white,
         body: content,
       );
     }
-    
-    // Sinon, on retourne juste le contenu
     return content;
   }
 }
