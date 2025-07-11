@@ -74,8 +74,15 @@ class _ChatState extends State<Chat> {
   void initState() {
     super.initState();
     
-    _detectUserRole();
-    _loadParticipantInfo();
+    _initializeChat();
+  }
+
+  Future<void> _initializeChat() async {
+    // D'abord détecter le rôle de l'utilisateur
+    await _detectUserRole();
+    
+    // Ensuite charger les informations des participants
+    await _loadParticipantInfo();
 
     if (widget.chatId.isNotEmpty) {
       _markMessagesAsRead();
@@ -426,71 +433,72 @@ class _ChatState extends State<Chat> {
         
         if (chatDoc.exists) {
           final data = chatDoc.data() as Map<String, dynamic>;
-          final consultationId = data['consultationId'] as String?;
+          final participants = List<String>.from(data['participants'] ?? []);
+          final otherParticipantId = participants.firstWhere(
+            (id) => id != widget.currentUserId,
+            orElse: () => '',
+          );
           
-          final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-          if (currentUserId != null) {
-            // Déterminer qui est l'autre participant
-            final participants = List<String>.from(data['participants'] ?? []);
-            final otherParticipantId = participants.firstWhere(
-              (id) => id != currentUserId,
-              orElse: () => '',
-            );
-            
-            if (otherParticipantId.isNotEmpty) {
-              // Toujours récupérer les vraies informations depuis Firestore
-              await _loadParticipantInfoFromFirestore(otherParticipantId);
-              
-              // Si c'est un médecin, essayer de récupérer le nom du patient depuis la consultation
-              if (_isDoctor && consultationId != null && consultationId.isNotEmpty) {
-                await _loadPatientNameFromConsultation(consultationId);
-              }
-              
-              // Si c'est un patient, essayer de récupérer le nom du médecin depuis la consultation
-              if (!_isDoctor && consultationId != null && consultationId.isNotEmpty) {
-                await _loadDoctorNameFromConsultation(consultationId);
-              }
-            }
+          if (otherParticipantId.isNotEmpty) {
+            // Utiliser la même logique que dans conversations_list.dart
+            final participantInfo = await _getParticipantInfo(otherParticipantId);
+            setState(() {
+              _otherParticipantName = participantInfo['name'];
+              _otherParticipantPhoto = participantInfo['photo'];
+            });
           }
         }
+      } else {
+        // Si pas de chatId, utiliser les informations passées en paramètres
+        setState(() {
+          _otherParticipantName = widget.otherParticipantName;
+          _otherParticipantPhoto = widget.otherParticipantPhoto;
+        });
       }
     } catch (e) {
       print('Erreur lors du chargement des informations des participants: $e');
+      // Fallback sur les informations passées en paramètres
+      setState(() {
+        _otherParticipantName = widget.otherParticipantName;
+        _otherParticipantPhoto = widget.otherParticipantPhoto;
+      });
     }
   }
 
-  Future<void> _loadParticipantInfoFromFirestore(String otherParticipantId) async {
+  Future<Map<String, String>> _getParticipantInfo(String participantId) async {
     try {
+      if (participantId.isEmpty) {
+        return {'name': 'Utilisateur inconnu', 'photo': ''};
+      }
+
       // Essayer d'abord de récupérer depuis UserDoctor
       final doctorDoc = await FirebaseFirestore.instance
           .collection('UserDoctor')
-          .doc(otherParticipantId)
+          .doc(participantId)
           .get();
       
       if (doctorDoc.exists) {
         final doctorData = doctorDoc.data() as Map<String, dynamic>;
         final doctorName = doctorData['name'] ?? 'Médecin';
-        setState(() {
-          _otherParticipantName = 'Dr. $doctorName';
-          _otherParticipantPhoto = doctorData['photoUrl'] ?? '';
-        });
-        return;
+        return {
+          'name': 'Dr. $doctorName',
+          'photo': doctorData['photoUrl'] ?? '',
+        };
       }
       
       // Si ce n'est pas un médecin, essayer UserPatient
       final patientDoc = await FirebaseFirestore.instance
           .collection('UserPatient')
-          .doc(otherParticipantId)
+          .doc(participantId)
           .get();
       
       if (patientDoc.exists) {
         final patientData = patientDoc.data() as Map<String, dynamic>;
         final patientName = patientData['name'] ?? 'Patient';
-        setState(() {
-          _otherParticipantName = patientName;
-          _otherParticipantPhoto = patientData['profileImageUrl'] ?? '';
-        });
-        return;
+        return {
+          'name': patientName,
+          'photo': patientData['profileImageUrl'] ?? '',
+        };
       }
       
       // Si l'utilisateur n'est trouvé dans aucune collection, essayer de récupérer depuis les consultations
@@ -498,7 +506,7 @@ class _ChatState extends State<Chat> {
         // Le médecin cherche le nom du patient
         final consultationQuery = await FirebaseFirestore.instance
             .collection('consultations')
-            .where('patientId', isEqualTo: otherParticipantId)
+            .where('patientId', isEqualTo: participantId)
             .where('doctorId', isEqualTo: widget.currentUserId)
             .limit(1)
             .get();
@@ -507,18 +515,17 @@ class _ChatState extends State<Chat> {
           final consultationData = consultationQuery.docs.first.data();
           final patientName = consultationData['patientName']?.toString();
           if (patientName != null && patientName.isNotEmpty) {
-            setState(() {
-              _otherParticipantName = patientName;
-              _otherParticipantPhoto = consultationData['patientPhoto']?.toString() ?? '';
-            });
-            return;
+            return {
+              'name': patientName,
+              'photo': consultationData['patientPhoto']?.toString() ?? '',
+            };
           }
         }
       } else {
         // Le patient cherche le nom du médecin
         final consultationQuery = await FirebaseFirestore.instance
             .collection('consultations')
-            .where('doctorId', isEqualTo: otherParticipantId)
+            .where('doctorId', isEqualTo: participantId)
             .where('patientId', isEqualTo: widget.currentUserId)
             .limit(1)
             .get();
@@ -527,70 +534,25 @@ class _ChatState extends State<Chat> {
           final consultationData = consultationQuery.docs.first.data();
           final doctorName = consultationData['doctorName']?.toString();
           if (doctorName != null && doctorName.isNotEmpty) {
-            setState(() {
-              _otherParticipantName = doctorName;
-              _otherParticipantPhoto = consultationData['doctorPhoto']?.toString() ?? '';
-            });
-            return;
+            return {
+              'name': doctorName,
+              'photo': consultationData['doctorPhoto']?.toString() ?? '',
+            };
           }
         }
       }
       
       // Fallback final
-      setState(() {
-        _otherParticipantName = 'Utilisateur inconnu';
-        _otherParticipantPhoto = '';
-      });
+      return {'name': 'Utilisateur inconnu', 'photo': ''};
     } catch (e) {
-      print('Erreur lors de la récupération du nom depuis Firestore: $e');
-      setState(() {
-        _otherParticipantName = 'Erreur de chargement';
-        _otherParticipantPhoto = '';
-      });
+      print('Erreur lors de la récupération des informations du participant $participantId: $e');
+      return {'name': 'Erreur de chargement', 'photo': ''};
     }
   }
 
-  Future<void> _loadPatientNameFromConsultation(String consultationId) async {
-    try {
-      final consultationDoc = await FirebaseFirestore.instance
-          .collection('consultations')
-          .doc(consultationId)
-          .get();
-      
-      if (consultationDoc.exists) {
-        final consultationData = consultationDoc.data() as Map<String, dynamic>;
-        final patientName = consultationData['patientName']?.toString();
-        if (patientName != null && patientName.isNotEmpty) {
-          setState(() {
-            _otherParticipantName = patientName;
-          });
-        }
-      }
-    } catch (e) {
-      print('Erreur lors de la récupération du nom du patient depuis consultation: $e');
-    }
-  }
 
-  Future<void> _loadDoctorNameFromConsultation(String consultationId) async {
-    try {
-      final consultationDoc = await FirebaseFirestore.instance
-          .collection('consultations')
-          .doc(consultationId)
-          .get();
-      
-      if (consultationDoc.exists) {
-        final consultationData = consultationDoc.data() as Map<String, dynamic>;
-        final doctorName = consultationData['doctorName']?.toString();
-        if (doctorName != null && doctorName.isNotEmpty) {
-          setState(() {
-            _otherParticipantName = doctorName;
-          });
-        }
-      }
-    } catch (e) {
-      print('Erreur lors de la récupération du nom du médecin depuis consultation: $e');
-    }
-  }
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -647,9 +609,7 @@ class _ChatState extends State<Chat> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    _isDoctor 
-                        ? (_otherParticipantName ?? widget.otherParticipantName ?? 'Patient')
-                        : (_otherParticipantName ?? widget.otherParticipantName ?? 'Médecin'),
+                    _otherParticipantName ?? 'Chargement...',
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -665,7 +625,7 @@ class _ChatState extends State<Chat> {
                       builder: (context, snapshot) {
                         if (snapshot.hasData && snapshot.data!.exists) {
                           final consultationData = snapshot.data!.data() as Map<String, dynamic>;
-                          final patientName = consultationData['patientName'] ?? 'Patient';
+                          final patientName = consultationData['patientName'] ?? _otherParticipantName ?? 'Patient';
                           final consultationStatus = consultationData['consultationStatus'] ?? '';
                           final isActive = consultationStatus == 'active';
                           
@@ -700,7 +660,7 @@ class _ChatState extends State<Chat> {
                       builder: (context, snapshot) {
                         if (snapshot.hasData && snapshot.data!.exists) {
                           final consultationData = snapshot.data!.data() as Map<String, dynamic>;
-                          final doctorName = consultationData['doctorName'] ?? 'Médecin';
+                          final doctorName = consultationData['doctorName'] ?? _otherParticipantName ?? 'Médecin';
                           final consultationStatus = consultationData['consultationStatus'] ?? '';
                           final isActive = consultationStatus == 'active';
                           
@@ -713,7 +673,7 @@ class _ChatState extends State<Chat> {
                               ),
                               const SizedBox(width: 4),
                               Text(
-                                'Consultation avec Dr. $doctorName',
+                                'Consultation avec $doctorName',
                                 style: const TextStyle(
                                   fontSize: 12,
                                   color: Colors.white70,
@@ -1245,4 +1205,4 @@ class _RatingDialogState extends State<RatingDialog> {
       ],
     );
   }
-} 
+}

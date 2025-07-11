@@ -252,41 +252,95 @@ class _ProfilDoctorState extends State<ProfilDoctor> {
   }
 
   Widget _buildAvailabilitySection() {
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Disponibilités',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.schedule,
                 color: Color(0xFF1976D2),
+                size: 24,
               ),
+              const SizedBox(width: 12),
+              const Text(
+                'Disponibilités',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1976D2),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            'Sélectionnez vos créneaux de disponibilité pour chaque jour :',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey,
             ),
-            const SizedBox(height: 16),
-            ..._availability.entries.map((entry) {
-              return Column(
+          ),
+          const SizedBox(height: 20),
+          ..._availability.entries.map((entry) {
+            return Container(
+              margin: const EdgeInsets.only(bottom: 20),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    entry.key,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
+                  Row(
+                    children: [
+                      Icon(
+                        _getDayIcon(entry.key),
+                        color: const Color(0xFF1976D2),
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        entry.key,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: Color(0xFF1976D2),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 12),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
                     children: _timeSlots.map((timeSlot) {
                       final isSelected = entry.value.contains(timeSlot);
                       return FilterChip(
-                        label: Text(timeSlot),
+                        label: Text(
+                          timeSlot,
+                          style: TextStyle(
+                            color: isSelected ? Colors.white : Colors.black87,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
                         selected: isSelected,
                         onSelected: (bool selected) {
                           setState(() {
@@ -297,19 +351,43 @@ class _ProfilDoctorState extends State<ProfilDoctor> {
                             }
                           });
                         },
-                        selectedColor: Colors.blue[100],
-                        checkmarkColor: Colors.blue,
+                        selectedColor: const Color(0xFF1976D2),
+                        checkmarkColor: Colors.white,
+                        backgroundColor: Colors.white,
+                        side: BorderSide(color: Colors.grey.shade300),
+                        elevation: isSelected ? 2 : 0,
+                        pressElevation: 4,
                       );
                     }).toList(),
                   ),
-                  const Divider(),
                 ],
-              );
-            }).toList(),
-          ],
-        ),
+              ),
+            );
+          }).toList(),
+        ],
       ),
     );
+  }
+
+  IconData _getDayIcon(String day) {
+    switch (day) {
+      case 'Lundi':
+        return Icons.calendar_today;
+      case 'Mardi':
+        return Icons.calendar_today;
+      case 'Mercredi':
+        return Icons.calendar_today;
+      case 'Jeudi':
+        return Icons.calendar_today;
+      case 'Vendredi':
+        return Icons.calendar_today;
+      case 'Samedi':
+        return Icons.weekend;
+      case 'Dimanche':
+        return Icons.weekend;
+      default:
+        return Icons.calendar_today;
+    }
   }
 
   @override
@@ -317,109 +395,144 @@ class _ProfilDoctorState extends State<ProfilDoctor> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Mon Profil'),
+        backgroundColor: const Color(0xFF1976D2),
+        foregroundColor: Colors.white,
+        elevation: 2,
         actions: [
           if (!_isLoading)
             IconButton(
               icon: const Icon(Icons.save),
               onPressed: _updateProfile,
+              tooltip: 'Sauvegarder',
             ),
         ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(20),
               child: Form(
                 key: _formKey,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Section photo de profil
                     Center(
-                      child: Stack(
-                        children: [
-                          CircleAvatar(
-                            radius: 50,
-                            backgroundImage: _imageFile != null
-                                ? FileImage(_imageFile!)
-                                : (_currentPhotoUrl != null
-                                    ? NetworkImage(_currentPhotoUrl!)
-                                    : const AssetImage('assets/default_doctor.png')) as ImageProvider,
-                          ),
-                          Positioned(
-                            bottom: 0,
-                            right: 0,
-                            child: CircleAvatar(
-                              backgroundColor: Theme.of(context).primaryColor,
-                              radius: 18,
-                              child: IconButton(
-                                icon: const Icon(Icons.camera_alt, size: 18, color: Colors.white),
-                                onPressed: _pickImage,
+                      child: Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.grey.withOpacity(0.1),
+                              spreadRadius: 1,
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Stack(
+                          children: [
+                            CircleAvatar(
+                              radius: 60,
+                              backgroundImage: _imageFile != null
+                                  ? FileImage(_imageFile!)
+                                  : (_currentPhotoUrl != null
+                                      ? NetworkImage(_currentPhotoUrl!)
+                                      : const AssetImage('assets/default_doctor.png')) as ImageProvider,
+                            ),
+                            Positioned(
+                              bottom: 0,
+                              right: 0,
+                              child: CircleAvatar(
+                                backgroundColor: const Color(0xFF1976D2),
+                                radius: 22,
+                                child: IconButton(
+                                  icon: const Icon(Icons.camera_alt, size: 20, color: Colors.white),
+                                  onPressed: _pickImage,
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
 
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 40),
                     _buildSection('Informations personnelles', [
                       _buildTextField(_nameController, 'Nom complet', Icons.person),
+                      const SizedBox(height: 8),
                       _buildTextField(_emailController, 'Email', Icons.email),
+                      const SizedBox(height: 8),
                       _buildTextField(_phoneController, 'Téléphone', Icons.phone),
                     ]),
 
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 40),
                     _buildSection('Informations professionnelles', [
-                      DropdownButtonFormField<String>(
-                        value: _selectedSpeciality,
-                        items: _specialities.map((sp) => DropdownMenuItem(
-                          value: sp,
-                          child: Text(sp),
-                        )).toList(),
-                        onChanged: (value) {
-                          setState(() {
-                            _selectedSpeciality = value;
-                            _showOtherSpecialityField = value == 'Autre';
-                            if (value != 'Autre') {
-                              _specialityController.text = value ?? '';
-                            } else {
-                              _specialityController.clear();
-                            }
-                          });
-                        },
-                        decoration: const InputDecoration(
-                          labelText: 'Spécialité',
-                          border: OutlineInputBorder(),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey.shade300),
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        validator: (value) => (value == null || value.isEmpty)
-                            ? 'Ce champ est requis'
-                            : null,
+                        child: DropdownButtonFormField<String>(
+                          value: _selectedSpeciality,
+                          items: _specialities.map((sp) => DropdownMenuItem(
+                            value: sp,
+                            child: Text(sp),
+                          )).toList(),
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedSpeciality = value;
+                              _showOtherSpecialityField = value == 'Autre';
+                              if (value != 'Autre') {
+                                _specialityController.text = value ?? '';
+                              } else {
+                                _specialityController.clear();
+                              }
+                            });
+                          },
+                          decoration: const InputDecoration(
+                            labelText: 'Spécialité',
+                            border: InputBorder.none,
+                            prefixIcon: Icon(Icons.medical_services),
+                          ),
+                          validator: (value) => (value == null || value.isEmpty)
+                              ? 'Ce champ est requis'
+                              : null,
+                        ),
                       ),
                       if (_showOtherSpecialityField) ...[
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 16),
                         _buildTextField(_specialityController, 'Précisez votre spécialité', Icons.edit),
                       ],
+                      const SizedBox(height: 8),
                       _buildTextField(_experienceController, 'Années d\'expérience', Icons.work, keyboardType: TextInputType.number),
+                      const SizedBox(height: 8),
                       _buildTextField(_educationController, 'Formation et diplômes', Icons.school),
+                      const SizedBox(height: 8),
                       _buildTextField(_servicesController, 'Services offerts (séparés par des virgules)', Icons.medical_information),
+                      const SizedBox(height: 8),
                       _buildTextField(_languagesController, 'Langues parlées (séparées par des virgules)', Icons.language),
                     ]),
 
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 40),
                     _buildSection('Localisation', [
                       _buildTextField(_addressController, 'Adresse du cabinet', Icons.location_on),
+                      const SizedBox(height: 8),
                       _buildTextField(_locationController, 'Ville/Quartier', Icons.location_city),
                     ]),
 
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 40),
                     _buildSection('Description', [
                       _buildTextField(_bioController, 'Description professionnelle', Icons.description, maxLines: 5),
                     ]),
 
-                    const SizedBox(height: 32),
-                    _buildSection('Disponibilités', [
-                      _buildAvailabilitySection(),
-                    ]),
+                    const SizedBox(height: 40),
+                    _buildAvailabilitySection(),
+                    
+                    const SizedBox(height: 40),
                   ],
                 ),
               ),
@@ -428,21 +541,62 @@ class _ProfilDoctorState extends State<ProfilDoctor> {
   }
 
   Widget _buildSection(String title, List<Widget> children) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF1976D2),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
-        ),
-        const SizedBox(height: 16),
-        ...children,
-      ],
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                _getSectionIcon(title),
+                color: const Color(0xFF1976D2),
+                size: 24,
+              ),
+              const SizedBox(width: 12),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1976D2),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          ...children,
+        ],
+      ),
     );
+  }
+
+  IconData _getSectionIcon(String title) {
+    switch (title) {
+      case 'Informations personnelles':
+        return Icons.person;
+      case 'Informations professionnelles':
+        return Icons.medical_services;
+      case 'Localisation':
+        return Icons.location_on;
+      case 'Description':
+        return Icons.description;
+      default:
+        return Icons.info;
+    }
   }
 
   Widget _buildTextField(
@@ -452,19 +606,47 @@ class _ProfilDoctorState extends State<ProfilDoctor> {
     int maxLines = 1,
     TextInputType? keyboardType,
   }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
       child: TextFormField(
         controller: controller,
         decoration: InputDecoration(
           labelText: label,
-          prefixIcon: Icon(icon),
+          prefixIcon: Icon(icon, color: const Color(0xFF1976D2)),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.grey.shade300),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.grey.shade300),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFF1976D2), width: 2),
+          ),
+          errorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.red.shade300),
+          ),
+          focusedErrorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.red.shade300, width: 2),
+          ),
+          filled: true,
+          fillColor: Colors.grey.shade50,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          labelStyle: TextStyle(
+            color: Colors.grey.shade600,
+            fontSize: 16,
           ),
         ),
         maxLines: maxLines,
         keyboardType: keyboardType,
+        style: const TextStyle(
+          fontSize: 16,
+          color: Colors.black87,
+        ),
         validator: (value) {
           if (value == null || value.isEmpty) {
             return 'Ce champ est requis';
