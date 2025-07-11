@@ -82,36 +82,65 @@ class _MyAppointmentsState extends State<MyAppointments> {
     return data;
   }
 
-  void _navigateToChat(String doctorId, String doctorName, String? doctorPhoto) {
+  void _navigateToChat(String doctorId, String doctorName, String? doctorPhoto) async {
+    try {
+      // Récupérer le nom du patient depuis Firestore
+      final patientDoc = await FirebaseFirestore.instance
+          .collection('UserPatient')
+          .doc(_auth.currentUser?.uid)
+          .get();
+      
+      String patientName = 'Patient';
+      if (patientDoc.exists) {
+        final patientData = patientDoc.data() as Map<String, dynamic>;
+        patientName = patientData['name'] ?? 'Patient';
+      }
+
+      Navigator.pushNamed(
+        context,
+        AppRoutes.chat,
+        arguments: {
+          'chatId': '', // Sera créé automatiquement
+          'currentUserId': _auth.currentUser?.uid ?? '',
+          'currentUserName': patientName,
+          'otherParticipantId': doctorId,
+          'otherParticipantName': doctorName,
+          'otherParticipantPhoto': doctorPhoto,
+        },
+      );
+    } catch (e) {
+      print('Erreur lors de la récupération du nom du patient: $e');
+      // Fallback avec le nom par défaut
     Navigator.pushNamed(
       context,
       AppRoutes.chat,
       arguments: {
         'chatId': '', // Sera créé automatiquement
         'currentUserId': _auth.currentUser?.uid ?? '',
-        'currentUserName': _auth.currentUser?.displayName ?? 'Patient',
+          'currentUserName': 'Patient',
         'otherParticipantId': doctorId,
         'otherParticipantName': doctorName,
         'otherParticipantPhoto': doctorPhoto,
       },
     );
   }
+  }
 
-  String _getStatutLabel(String status) {
-    if (status == 'active') return 'En cours';
-    if (status == 'completed') return 'Terminée';
+  String _getStatutLabel(String consultationStatus) {
+    if (consultationStatus == 'active') return 'En cours';
+    if (consultationStatus == 'terminated') return 'Terminée';
     return 'Inconnu';
   }
 
-  IconData _getStatutIcon(String status) {
-    if (status == 'active') return Icons.message;
-    if (status == 'completed') return Icons.check_circle;
-    return Icons.help;
+  IconData _getStatutIcon(String consultationStatus) {
+    if (consultationStatus == 'active') return Icons.schedule;
+    if (consultationStatus == 'terminated') return Icons.check_circle;
+    return Icons.help_outline;
   }
 
-  Color _getStatutColor(String status) {
-    if (status == 'active') return Colors.green;
-    if (status == 'completed') return Colors.blue;
+  Color _getStatutColor(String consultationStatus) {
+    if (consultationStatus == 'active') return Colors.orange;
+    if (consultationStatus == 'terminated') return Colors.green;
     return Colors.grey;
   }
 
@@ -194,14 +223,14 @@ class _MyAppointmentsState extends State<MyAppointments> {
               child: Column(
                 children: [
                   _buildStatsCard(montantParMedecin),
-                  if (_consultations.any((c) => c['status'] == 'active'))
-                    _buildSectionTitle('Consultations'),
-                  if (_consultations.any((c) => c['status'] == 'active'))
-                    ..._consultations.where((c) => c['status'] == 'active').map((c) => _buildConsultationCard(c, montantParMedecin)).toList(),
-                  if (_consultations.any((c) => c['status'] == 'completed'))
-                    _buildSectionTitle('Consultations terminées'),
-                  if (_consultations.any((c) => c['status'] == 'completed'))
-                    ..._consultations.where((c) => c['status'] == 'completed').map((c) => _buildConsultationCard(c, montantParMedecin)).toList(),
+                  if (_consultations.any((c) => c['consultationStatus'] == 'terminated'))
+                    _buildSectionTitle('Consultations payées'),
+                  if (_consultations.any((c) => c['consultationStatus'] == 'terminated'))
+                    ..._consultations.where((c) => c['consultationStatus'] == 'terminated').map((c) => _buildConsultationCard(c, montantParMedecin)).toList(),
+                  if (_consultations.any((c) => c['consultationStatus'] == 'active'))
+                    _buildSectionTitle('Consultations en attente'),
+                  if (_consultations.any((c) => c['consultationStatus'] == 'active'))
+                    ..._consultations.where((c) => c['consultationStatus'] == 'active').map((c) => _buildConsultationCard(c, montantParMedecin)).toList(),
                   if (_consultations.isEmpty) _buildEmptyState(),
                 ],
               ),
@@ -212,7 +241,7 @@ class _MyAppointmentsState extends State<MyAppointments> {
   Widget _buildStatsCard(Map<String, int> montantParMedecin) {
     // Calcul des statistiques dynamiquement
     final totalConsultations = _consultations.length;
-    final consultationsEnCours = _consultations.where((c) => c['status'] == 'active').length;
+    final consultationsPayees = _consultations.where((c) => c['consultationStatus'] == 'terminated').length;
     int montantTotal = 0;
     for (final c in _consultations) {
       if (c['payments'] is List) {
@@ -255,9 +284,9 @@ class _MyAppointmentsState extends State<MyAppointments> {
           ),
           Expanded(
             child: _buildStatItem(
-              'En cours',
-              '$consultationsEnCours',
-              Icons.message,
+              'Payées',
+              '$consultationsPayees',
+              Icons.check_circle,
             ),
           ),
           Expanded(
@@ -356,10 +385,10 @@ class _MyAppointmentsState extends State<MyAppointments> {
     final formattedDate = createdAt != null
         ? DateFormat('dd/MM/yyyy à HH:mm').format(createdAt.toDate())
         : 'Date inconnue';
-    final status = consultation['status'] ?? '';
-    final statutLabel = _getStatutLabel(status);
-    final statutIcon = _getStatutIcon(status);
-    final statutColor = _getStatutColor(status);
+    final consultationStatus = consultation['consultationStatus'] ?? '';
+    final statutLabel = _getStatutLabel(consultationStatus);
+    final statutIcon = _getStatutIcon(consultationStatus);
+    final statutColor = _getStatutColor(consultationStatus);
     final montant = _getMontantConsultation(consultation);
     final method = _getPaymentMethod(consultation);
     final doctorId = consultation['doctorId'] ?? '';

@@ -33,25 +33,29 @@ class PatientPage extends StatelessWidget {
             return const Center(child: CircularProgressIndicator());
           }
           if (!snapshot.hasData || !snapshot.data!.exists) {
-            return Center(child: Text('Patient non trouvé', style: TextStyle(color: mainText)));
+            return Center(child: Text('Information indisponible', style: TextStyle(color: mainText)));
           }
-          final patientData = snapshot.data!.data() as Map<String, dynamic>;
+          final patientDataRaw = snapshot.data!.data();
+          if (patientDataRaw == null || patientDataRaw is! Map<String, dynamic>) {
+            return Center(child: Text('Information indisponible', style: TextStyle(color: mainText)));
+          }
+          final patientData = patientDataRaw as Map<String, dynamic>;
           return LayoutBuilder(
             builder: (context, constraints) {
               final isWide = constraints.maxWidth > 700;
-              return SingleChildScrollView(
+          return SingleChildScrollView(
                 child: Center(
                   child: ConstrainedBox(
                     constraints: BoxConstraints(maxWidth: 700),
-                    child: Column(
-                      children: [
+            child: Column(
+              children: [
                         _buildHeader(context, patientData, isDark, mainText, subText),
                         _buildInfoSection(context, patientData, cardColor, mainText, subText, divider, isDark),
                         _buildMedicalHistory(context, patientData, cardColor, mainText, subText, divider, isDark),
                         _buildAppointmentHistory(context, cardColor, mainText, subText, divider, isDark),
                         const SizedBox(height: 24),
-                      ],
-                    ),
+              ],
+            ),
                   ),
                 ),
               );
@@ -130,7 +134,7 @@ class PatientPage extends StatelessWidget {
                   ),
                 ),
               ],
-            ),
+          ),
         ],
       ),
     );

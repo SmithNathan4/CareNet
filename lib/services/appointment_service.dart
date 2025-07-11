@@ -38,16 +38,6 @@ class AppointmentService {
     String? doctorPhoto,
   }) async {
     try {
-      // Vérifier si le patient a déjà payé ce médecin
-      final hasPaid = await hasPatientPaidDoctor(
-        patientId: patientId,
-        doctorId: doctorId,
-      );
-
-      if (hasPaid) {
-        throw Exception('Vous avez déjà payé ce médecin. Vous pouvez le contacter directement dans vos messages.');
-      }
-
       // Créer la consultation
       final consultationRef = await _firestore.collection('consultations').add({
         'patientId': patientId,
@@ -55,14 +45,12 @@ class AppointmentService {
         'doctorId': doctorId,
         'doctorName': doctorName,
         'reason': reason,
-        'status': 'active',
         'createdAt': FieldValue.serverTimestamp(),
         'paymentMethod': paymentMethod,
         'amount': 3000,
         'paymentStatus': 'completed',
-        'lastMessageAt': FieldValue.serverTimestamp(),
-        'patientPhoto': patientPhoto,
-        'doctorPhoto': doctorPhoto,
+        'patientPhoto': patientPhoto ?? '',
+        'doctorPhoto': doctorPhoto ?? '',
       });
 
       return consultationRef.id;
@@ -178,16 +166,14 @@ class AppointmentService {
       
       return {
         'totalConsultations': consultations.length,
-        'activeConsultations': consultations.where((c) => c['status'] == 'active').length,
-        'completedConsultations': consultations.where((c) => c['status'] == 'completed').length,
+        'paidConsultations': consultations.where((c) => c['paymentStatus'] == 'completed').length,
         'totalAmount': consultations.fold<int>(0, (sum, c) => sum + (c['amount'] as int? ?? 0)),
       };
     } catch (e) {
       print('Erreur lors du calcul des statistiques: $e');
       return {
         'totalConsultations': 0,
-        'activeConsultations': 0,
-        'completedConsultations': 0,
+        'paidConsultations': 0,
         'totalAmount': 0,
       };
     }
@@ -200,16 +186,14 @@ class AppointmentService {
       
       return {
         'totalConsultations': consultations.length,
-        'activeConsultations': consultations.where((c) => c['status'] == 'active').length,
-        'completedConsultations': consultations.where((c) => c['status'] == 'completed').length,
+        'paidConsultations': consultations.where((c) => c['paymentStatus'] == 'completed').length,
         'totalEarnings': consultations.fold<int>(0, (sum, c) => sum + (c['amount'] as int? ?? 0)),
       };
     } catch (e) {
       print('Erreur lors du calcul des statistiques: $e');
       return {
         'totalConsultations': 0,
-        'activeConsultations': 0,
-        'completedConsultations': 0,
+        'paidConsultations': 0,
         'totalEarnings': 0,
       };
     }
@@ -361,5 +345,69 @@ class AppointmentService {
         .snapshots()
         .map((snapshot) =>
             snapshot.docs.map((doc) => Appointment.fromFirestore(doc)).toList());
+  }
+
+  // Terminer une consultation
+  Future<void> endConsultation(String consultationId) async {
+    try {
+      await _firestore
+          .collection('consultations')
+          .doc(consultationId)
+          .update({
+        'consultationStatus': 'terminated',
+        'endedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      print('Erreur lors de la terminaison de la consultation: $e');
+      rethrow;
+    }
+  }
+
+  // Récupérer les consultations actives (payées mais non terminées)
+  Future<List<Map<String, dynamic>>> getActiveConsultations(String doctorId) async {
+    try {
+      final query = await _firestore
+          .collection('consultations')
+          .where('doctorId', isEqualTo: doctorId)
+          .where('paymentStatus', isEqualTo: 'completed')
+          .where('consultationStatus', isNotEqualTo: 'terminated')
+          .orderBy('createdAt', descending: true)
+          .get();
+
+      return query.docs.map((doc) {
+        final data = doc.data();
+        return {
+          'id': doc.id,
+          ...data,
+        };
+      }).toList();
+    } catch (e) {
+      print('Erreur lors de la récupération des consultations actives: $e');
+      return [];
+    }
+  }
+
+  // Récupérer les consultations terminées
+  Future<List<Map<String, dynamic>>> getTerminatedConsultations(String doctorId) async {
+    try {
+      final query = await _firestore
+          .collection('consultations')
+          .where('doctorId', isEqualTo: doctorId)
+          .where('paymentStatus', isEqualTo: 'completed')
+          .where('consultationStatus', isEqualTo: 'terminated')
+          .orderBy('endedAt', descending: true)
+          .get();
+
+      return query.docs.map((doc) {
+        final data = doc.data();
+        return {
+          'id': doc.id,
+          ...data,
+        };
+      }).toList();
+    } catch (e) {
+      print('Erreur lors de la récupération des consultations terminées: $e');
+      return [];
+    }
   }
 } 

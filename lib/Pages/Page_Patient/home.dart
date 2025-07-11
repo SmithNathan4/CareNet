@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../Chat/conversations_list.dart';
 import '../../services/firebase/firestore.dart';
 import '../../services/firebase/auth.dart';
+import '../../services/firebase/chat_service.dart';
 import '../../routes/app_routes.dart';
 import 'doctor_list.dart';
 import '../ParametrePatient/patient_settings.dart';
@@ -49,6 +50,16 @@ class _HomeState extends State<Home> {
     _loadAllDoctors();
     _checkAuthState();
     _checkActiveStatus();
+    _migrateConversations();
+  }
+
+  Future<void> _migrateConversations() async {
+    try {
+      final chatService = ChatService();
+      await chatService.forceUpdateAllConversations();
+    } catch (e) {
+      print('Erreur lors de la migration des conversations: $e');
+    }
   }
 
   @override

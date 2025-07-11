@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'user_details_admin.dart';
+import '../../services/firebase/admin_auth_service.dart';
 
 class UsersAdmin extends StatefulWidget {
   const UsersAdmin({Key? key}) : super(key: key);
@@ -14,6 +15,7 @@ class _UsersAdminState extends State<UsersAdmin> {
   String _selectedType = 'Docteurs';
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
+  final AdminAuthService _adminAuthService = AdminAuthService();
 
   @override
   void dispose() {
@@ -195,14 +197,61 @@ class _UsersAdminState extends State<UsersAdmin> {
   }
 
   Future<void> _toggleActive(String collection, String id, bool activate) async {
-    await FirebaseFirestore.instance.collection(collection).doc(id).update({'active': activate});
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(activate ? 'Utilisateur débloqué' : 'Utilisateur bloqué'),
-          backgroundColor: activate ? Colors.green : Colors.red,
-        ),
-      );
+    try {
+      // Mettre à jour Firestore
+      await FirebaseFirestore.instance.collection(collection).doc(id).update({
+        'active': activate,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      // Récupérer l'email de l'utilisateur pour Firebase Auth
+      final userDoc = await FirebaseFirestore.instance.collection(collection).doc(id).get();
+      final userData = userDoc.data() as Map<String, dynamic>?;
+      final userEmail = userData?['email'];
+
+      if (userEmail != null) {
+        // Obtenir l'UID de l'utilisateur
+        final uid = await _adminAuthService.getUserUidByEmail(userEmail);
+        
+        if (uid != null) {
+          // Désactiver/Activer le compte dans Firebase Auth
+          bool authSuccess;
+          if (activate) {
+            authSuccess = await _adminAuthService.enableUser(uid);
+          } else {
+            authSuccess = await _adminAuthService.disableUser(uid);
+          }
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(activate 
+                  ? (authSuccess ? 'Utilisateur débloqué' : 'Erreur lors du déblocage Firebase Auth')
+                  : (authSuccess ? 'Utilisateur bloqué' : 'Erreur lors du blocage Firebase Auth')),
+                backgroundColor: authSuccess ? (activate ? Colors.green : Colors.orange) : Colors.red,
+              ),
+            );
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Utilisateur mis à jour dans Firestore (UID non trouvé pour Firebase Auth)'),
+                backgroundColor: activate ? Colors.green : Colors.orange,
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -210,21 +259,131 @@ class _UsersAdminState extends State<UsersAdmin> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Confirmation'),
-        content: const Text('Voulez-vous vraiment supprimer cet utilisateur ?'),
+        title: const Text('Confirmation de suppression'),
+        content: const Text(
+          'Voulez-vous vraiment supprimer cet utilisateur ?\n\n'
+          'Cette action supprimera définitivement :\n'
+          '• Le compte Firebase Auth\n'
+          '• Les données Firestore\n'
+          '• Toutes les consultations associées\n\n'
+          'Cette action est irréversible !'
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Annuler')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Supprimer', style: TextStyle(color: Colors.red))),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false), 
+            child: const Text('Annuler')
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true), 
+            child: const Text('Supprimer', style: TextStyle(color: Colors.red))
+          ),
         ],
       ),
     );
+
     if (confirm == true) {
-      await FirebaseFirestore.instance.collection(collection).doc(id).delete();
       try {
-        await FirebaseAuth.instance.currentUser?.delete(); // Suppression dans Auth (si connecté)
+        // Récupérer l'email de l'utilisateur
+        final userDoc = await FirebaseFirestore.instance.collection(collection).doc(id).get();
+        final userData = userDoc.data() as Map<String, dynamic>?;
+        final userEmail = userData?['email'];
+
+        // Supprimer de Firestore
+        await FirebaseFirestore.instance.collection(collection).doc(id).delete();
+
+        // Supprimer les consultations associées
+        await _deleteUserConsultations(id, collection);
+
+        // Supprimer les chats associés
+        await _deleteUserChats(id);
+
+        // Supprimer les évaluations associées
+        await _deleteUserRatings(id);
+
+        // Supprimer de Firebase Auth si l'email est trouvé
+        bool authDeleted = false;
+        if (userEmail != null) {
+          final uid = await _adminAuthService.getUserUidByEmail(userEmail);
+          if (uid != null) {
+            authDeleted = await _adminAuthService.deleteUser(uid);
+          }
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(authDeleted 
+                ? 'Utilisateur supprimé avec succès (Firestore + Firebase Auth)'
+                : 'Utilisateur supprimé de Firestore (erreur Firebase Auth)'),
+              backgroundColor: authDeleted ? Colors.green : Colors.orange,
+            ),
+          );
+        }
+        
       } catch (e) {
-        // Si ce n'est pas l'utilisateur connecté, utiliser l'API Admin côté serveur
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Erreur lors de la suppression: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
       }
+    }
+  }
+  }
+
+  Future<void> _deleteUserConsultations(String userId, String userType) async {
+    try {
+      final consultationsQuery = FirebaseFirestore.instance
+          .collection('consultations')
+          .where(userType == 'UserDoctor' ? 'doctorId' : 'patientId', isEqualTo: userId);
+      
+      final consultations = await consultationsQuery.get();
+      
+      for (var doc in consultations.docs) {
+        await doc.reference.delete();
+      }
+    } catch (e) {
+      print('Erreur lors de la suppression des consultations: $e');
+    }
+  }
+
+  Future<void> _deleteUserChats(String userId) async {
+    try {
+      final chatsQuery = FirebaseFirestore.instance
+          .collection('chats')
+          .where('participants', arrayContains: userId);
+      
+      final chats = await chatsQuery.get();
+      
+      for (var doc in chats.docs) {
+        // Supprimer tous les messages du chat
+        final messages = await doc.reference.collection('messages').get();
+        for (var message in messages.docs) {
+          await message.reference.delete();
+        }
+        // Supprimer le chat
+        await doc.reference.delete();
+      }
+    } catch (e) {
+      print('Erreur lors de la suppression des chats: $e');
+    }
+  }
+
+  Future<void> _deleteUserRatings(String userId) async {
+    try {
+      final ratingsQuery = FirebaseFirestore.instance
+          .collection('ratings')
+          .where('patientId', isEqualTo: userId);
+      
+      final ratings = await ratingsQuery.get();
+      
+      for (var doc in ratings.docs) {
+        await doc.reference.delete();
+      }
+    } catch (e) {
+      print('Erreur lors de la suppression des évaluations: $e');
     }
   }
 
@@ -240,28 +399,28 @@ class _UsersAdminState extends State<UsersAdmin> {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setState) {
-            return AlertDialog(
-              title: Text(isDoctor ? 'Créer un compte Docteur' : 'Créer un compte Admin'),
-              content: SingleChildScrollView(
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      TextFormField(
-                        controller: nameController,
-                        decoration: const InputDecoration(labelText: 'Nom complet'),
-                        validator: (v) => v == null || v.isEmpty ? 'Champ requis' : null,
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: emailController,
-                        decoration: const InputDecoration(labelText: 'Email'),
-                        validator: (v) => v == null || v.isEmpty ? 'Champ requis' : null,
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: passwordController,
+        return AlertDialog(
+          title: Text(isDoctor ? 'Créer un compte Docteur' : 'Créer un compte Admin'),
+          content: SingleChildScrollView(
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: nameController,
+                    decoration: const InputDecoration(labelText: 'Nom complet'),
+                    validator: (v) => v == null || v.isEmpty ? 'Champ requis' : null,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: emailController,
+                    decoration: const InputDecoration(labelText: 'Email'),
+                    validator: (v) => v == null || v.isEmpty ? 'Champ requis' : null,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: passwordController,
                         decoration: InputDecoration(
                           labelText: 'Mot de passe',
                           suffixIcon: IconButton(
@@ -274,31 +433,31 @@ class _UsersAdminState extends State<UsersAdmin> {
                           ),
                         ),
                         obscureText: obscurePassword,
-                        validator: (v) => v == null || v.length < 6 ? 'Au moins 6 caractères' : null,
-                      ),
-                    ],
+                    validator: (v) => v == null || v.length < 6 ? 'Au moins 6 caractères' : null,
                   ),
-                ),
+                ],
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Annuler'),
-                ),
-                ElevatedButton(
-                  onPressed: () async {
-                    if (!_formKey.currentState!.validate()) return;
-                    await _createUser(
-                      name: nameController.text.trim(),
-                      email: emailController.text.trim(),
-                      password: passwordController.text.trim(),
-                      isDoctor: isDoctor,
-                    );
-                    Navigator.pop(context);
-                  },
-                  child: const Text('Créer'),
-                ),
-              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Annuler'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (!_formKey.currentState!.validate()) return;
+                await _createUser(
+                  name: nameController.text.trim(),
+                  email: emailController.text.trim(),
+                  password: passwordController.text.trim(),
+                  isDoctor: isDoctor,
+                );
+                Navigator.pop(context);
+              },
+              child: const Text('Créer'),
+            ),
+          ],
             );
           },
         );

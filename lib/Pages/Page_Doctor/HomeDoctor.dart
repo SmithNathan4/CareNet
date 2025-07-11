@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../../routes/app_routes.dart';
 import '../../services/firebase/firestore.dart';
 import '../../services/firebase/auth.dart';
+import '../../services/firebase/chat_service.dart';
 import '../Page_Doctor/PatientList.dart';
 import '../Chat/conversations_list.dart';
 import '../ParametreDoctor/settingsDoctor.dart';
@@ -55,6 +56,16 @@ class _HomeDoctorState extends State<HomeDoctor> {
     _auth = FirebaseAuth.instance;
     _initializeDoctorStatus();
     _checkAuthState();
+    _migrateConversations();
+  }
+
+  Future<void> _migrateConversations() async {
+    try {
+      final chatService = ChatService();
+      await chatService.forceUpdateAllConversations();
+    } catch (e) {
+      print('Erreur lors de la migration des conversations: $e');
+    }
   }
 
   Future<void> _checkAuthState() async {
@@ -73,7 +84,7 @@ class _HomeDoctorState extends State<HomeDoctor> {
           .collection('UserDoctor')
           .doc(_auth.currentUser?.uid)
           .get();
-
+      
       if (doctorDoc.exists) {
         final data = doctorDoc.data() as Map<String, dynamic>?;
         if (data != null && !data.containsKey('status')) {
@@ -102,22 +113,22 @@ class _HomeDoctorState extends State<HomeDoctor> {
     try {
       // Recherche dans plusieurs champs
       final results = await _firestoreService.searchPatientsByName(query);
-
+      
       // Recherche supplémentaire par email et téléphone
       final emailResults = await _firestoreService.searchPatientsByEmail(query);
       final phoneResults = await _firestoreService.searchPatientsByPhone(query);
-
+      
       // Combiner et dédupliquer les résultats
       final allResults = <Map<String, dynamic>>[];
       final seenIds = <String>{};
-
+      
       void addResult(Map<String, dynamic> result) {
         if (!seenIds.contains(result['id'])) {
           seenIds.add(result['id']);
           allResults.add(result);
         }
       }
-
+      
       // Ajouter les résultats de recherche par nom
       for (final doc in results) {
         final data = doc.data() as Map<String, dynamic>;
@@ -132,7 +143,7 @@ class _HomeDoctorState extends State<HomeDoctor> {
           'status': data['status'] ?? 'actif',
         });
       }
-
+      
       // Ajouter les résultats de recherche par email
       for (final doc in emailResults) {
         final data = doc.data() as Map<String, dynamic>;
@@ -147,7 +158,7 @@ class _HomeDoctorState extends State<HomeDoctor> {
           'status': data['status'] ?? 'actif',
         });
       }
-
+      
       // Ajouter les résultats de recherche par téléphone
       for (final doc in phoneResults) {
         final data = doc.data() as Map<String, dynamic>;
@@ -162,7 +173,7 @@ class _HomeDoctorState extends State<HomeDoctor> {
           'status': data['status'] ?? 'actif',
         });
       }
-
+      
       setState(() {
         _searchResults = allResults;
         _showSearchResults = true;
@@ -200,7 +211,49 @@ class _HomeDoctorState extends State<HomeDoctor> {
   Future<void> _openChat(Map<String, dynamic> patient) async {
     try {
       final String currentUserId = _auth.currentUser!.uid;
-      final List<String> ids = [currentUserId, patient['id']];
+      
+      // Vérifier si le patient a payé ce médecin et récupérer les détails de la consultation
+      final consultationQuery = await FirebaseFirestore.instance
+          .collection('consultations')
+          .where('patientId', isEqualTo: patient['id'])
+          .where('doctorId', isEqualTo: currentUserId)
+          .where('paymentStatus', isEqualTo: 'completed')
+          .get();
+
+      if (consultationQuery.docs.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Aucune consultation payée trouvée avec ce patient'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      // Récupérer les détails de la consultation
+      final consultationDoc = consultationQuery.docs.first;
+      final consultationData = consultationDoc.data();
+      final patientId = consultationData['patientId'] ?? patient['id'];
+      final consultationId = consultationDoc.id;
+
+      // Récupérer les informations complètes du patient depuis Firestore
+      final patientDoc = await FirebaseFirestore.instance
+          .collection('UserPatient')
+          .doc(patientId)
+          .get();
+
+      String patientName = patient['name'];
+      String patientEmail = '';
+      String patientPhone = '';
+      
+      if (patientDoc.exists) {
+        final patientData = patientDoc.data() as Map<String, dynamic>;
+        patientName = patientData['name'] ?? patient['name'];
+        patientEmail = patientData['email'] ?? '';
+        patientPhone = patientData['phone'] ?? '';
+      }
+
+      final List<String> ids = [currentUserId, patientId];
       ids.sort();
       final String chatRoomId = ids.join('_');
 
@@ -211,36 +264,74 @@ class _HomeDoctorState extends State<HomeDoctor> {
         final doctorData = doctorDoc.data() ?? {};
 
         await _firestore.collection('chats').doc(chatRoomId).set({
-          'participants': [currentUserId, patient['id']],
+          'participants': [currentUserId, patientId],
+          'participantNames': {
+            currentUserId: 'Dr. ${doctorData['name'] ?? _auth.currentUser?.displayName ?? ''}',
+            patientId: patientName,
+          },
+          'participantPhotos': {
+            currentUserId: doctorData['photoUrl'] ?? '',
+            patientId: patient['profileImageUrl'] ?? '',
+          },
+          'participantRoles': {
+            currentUserId: 'doctor',
+            patientId: 'patient',
+          },
           'createdAt': FieldValue.serverTimestamp(),
-          'lastMessage': null,
-          'lastMessageTimestamp': null,
+          'lastMessage': '',
+          'lastMessageTime': FieldValue.serverTimestamp(),
+          'lastMessageSenderId': '',
+          'unreadCount': {
+            currentUserId: 0,
+            patientId: 0,
+          },
+          'isActive': true,
+          'consultationId': consultationId,
           'doctorInfo': {
             'id': currentUserId,
-            'name': 'Dr. ${_auth.currentUser?.displayName ?? ''}',
+            'name': 'Dr. ${doctorData['name'] ?? _auth.currentUser?.displayName ?? ''}',
             'photoUrl': doctorData['photoUrl'] ?? '',
             'speciality': doctorData['speciality'] ?? '',
             'role': 'doctor'
           },
           'patientInfo': {
-            'id': patient['id'],
-            'name': patient['name'],
+            'id': patientId,
+            'name': patientName,
+            'email': patientEmail,
+            'phone': patientPhone,
             'photoUrl': patient['profileImageUrl'] ?? '',
-            'role': 'patient'
+            'role': 'patient',
+            'consultationId': consultationId,
           }
         });
       }
 
       if (mounted) {
+        // Récupérer le nom du médecin depuis Firestore
+        final doctorDoc = await FirebaseFirestore.instance
+            .collection('UserDoctor')
+            .doc(_auth.currentUser?.uid)
+            .get();
+        
+        String doctorName = 'Dr. ${_auth.currentUser?.displayName ?? ''}';
+        if (doctorDoc.exists) {
+          final doctorData = doctorDoc.data() as Map<String, dynamic>;
+          doctorName = 'Dr. ${doctorData['name'] ?? ''}';
+        }
+
         AppRoutes.navigateToChat(
           context,
           currentUserId: currentUserId,
-          currentUserName: 'Dr. ${_auth.currentUser?.displayName ?? ''}',
+          currentUserName: doctorName,
           currentUserRole: 'doctor',
-          recipientId: patient['id'],
-          recipientName: patient['name'],
+          recipientId: patientId,
+          recipientName: patientName,
           recipientRole: 'patient',
           recipientPhoto: patient['profileImageUrl'] ?? '',
+          // Passer les informations supplémentaires
+          consultationId: consultationId,
+          patientEmail: patientEmail,
+          patientPhone: patientPhone,
         );
       }
     } catch (e) {
@@ -262,7 +353,7 @@ class _HomeDoctorState extends State<HomeDoctor> {
       builder: (context, snapshot) {
         final data = snapshot.data?.data() as Map<String, dynamic>?;
         final status = data?['status'] ?? 'hors_ligne';
-
+        
         Color statusColor;
         String statusText;
         switch (status) {
@@ -316,7 +407,7 @@ class _HomeDoctorState extends State<HomeDoctor> {
                 uid: _auth.currentUser!.uid,
                 status: newStatus,
               );
-
+              
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
@@ -598,12 +689,12 @@ class _HomeDoctorState extends State<HomeDoctor> {
         color: Colors.grey[50],
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.grey[200]!),
-      ),
+        ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
+        Row(
+          children: [
               CircleAvatar(
                 radius: 20,
                 backgroundImage: request['patientPhotoUrl']?.isNotEmpty == true
@@ -612,9 +703,9 @@ class _HomeDoctorState extends State<HomeDoctor> {
                 onBackgroundImageError: (_, __) {
                   const AssetImage('assets/default_profile.png');
                 },
-              ),
+            ),
               const SizedBox(width: 12),
-              Expanded(
+            Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -624,23 +715,23 @@ class _HomeDoctorState extends State<HomeDoctor> {
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
                       ),
-                    ),
+                ),
                     Text(
                       'Date: ${_formatDate(request['date'])}',
                       style: TextStyle(
                         color: Colors.grey[600],
                         fontSize: 14,
-                      ),
-                    ),
-                  ],
-                ),
               ),
-            ],
+            ),
+          ],
+        ),
+              ),
+      ],
           ),
           const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
-            children: [
+      children: [
               TextButton(
                 onPressed: () => _handleAppointmentRequest(requestId, 'refuse'),
                 style: TextButton.styleFrom(
@@ -658,8 +749,8 @@ class _HomeDoctorState extends State<HomeDoctor> {
                 child: const Text('Accepter'),
               ),
             ],
-          ),
-        ],
+        ),
+      ],
       ),
     );
   }
@@ -693,17 +784,17 @@ class _HomeDoctorState extends State<HomeDoctor> {
           'refuse',
         );
       }
-
+      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-                action == 'accept'
-                    ? 'Rendez-vous accepté'
-                    : 'Rendez-vous refusé'
+              action == 'accept' 
+                ? 'Rendez-vous accepté' 
+                : 'Rendez-vous refusé'
             ),
             backgroundColor: action == 'accept' ? Colors.green : Colors.red,
-          ),
+            ),
         );
       }
     } catch (e) {
@@ -712,7 +803,7 @@ class _HomeDoctorState extends State<HomeDoctor> {
           SnackBar(
             content: Text('Erreur: $e'),
             backgroundColor: Colors.red,
-          ),
+            ),
         );
       }
     }
@@ -744,7 +835,7 @@ class _HomeDoctorState extends State<HomeDoctor> {
             onPressed: () => Navigator.pop(context, _messageController.text),
             child: const Text('Envoyer'),
           ),
-        ],
+          ],
       ),
     );
   }
@@ -789,7 +880,7 @@ class _HomeDoctorState extends State<HomeDoctor> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final doctorId = FirebaseAuth.instance.currentUser?.uid;
-
+    
     return Container(
       padding: EdgeInsets.all(isTablet ? 30 : 20),
       child: Column(
@@ -806,15 +897,19 @@ class _HomeDoctorState extends State<HomeDoctor> {
           SizedBox(height: isTablet ? 24 : 16),
           Row(
             children: [
-              // Bloc 1 : Nombre total de patients ayant consulté
+              // Bloc 1 : Total des consultations
               Expanded(
                 child: StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance
                       .collection('consultations')
                       .where('doctorId', isEqualTo: doctorId)
+                      .where('paymentStatus', isEqualTo: 'completed')
                       .snapshots(),
                   builder: (context, snapshot) {
-                    final consultations = snapshot.data?.docs ?? [];
+                    if (!snapshot.hasData) {
+                      return _buildStatCard('Total', '0', Icons.medical_services, Colors.blue);
+                    }
+                    final consultations = snapshot.data!.docs;
                     final uniquePatients = consultations.map((c) => c['patientId']).toSet().length;
                     return _buildStatCard(
                       'Patients total',
@@ -832,7 +927,7 @@ class _HomeDoctorState extends State<HomeDoctor> {
                   stream: FirebaseFirestore.instance
                       .collection('consultations')
                       .where('doctorId', isEqualTo: doctorId)
-                      .where('status', whereIn: ['active', 'en cours'])
+                      .where('consultationStatus', isEqualTo: 'active')
                       .snapshots(),
                   builder: (context, snapshot) {
                     final ongoing = snapshot.data?.docs.length ?? 0;
@@ -876,7 +971,7 @@ class _HomeDoctorState extends State<HomeDoctor> {
     final isTablet = screenWidth > 600;
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-
+    
     return Container(
       padding: EdgeInsets.all(isTablet ? 20 : 16),
       decoration: BoxDecoration(
@@ -954,28 +1049,28 @@ class _HomeDoctorState extends State<HomeDoctor> {
           SizedBox(height: isTablet ? 24 : 12),
           GestureDetector(
             onTap: () => Navigator.pushNamed(context, '/doctor_consultations_history'),
-            child: Container(
-              padding: EdgeInsets.all(isTablet ? 24 : 20),
-              decoration: BoxDecoration(
+      child: Container(
+        padding: EdgeInsets.all(isTablet ? 24 : 20),
+        decoration: BoxDecoration(
                 color: Colors.blue[50],
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
                     color: Colors.blue.withOpacity(0.08),
-                    spreadRadius: 1,
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
+              spreadRadius: 1,
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
               child: Row(
-                children: [
+          children: [
                   Icon(Icons.medical_services, color: Colors.blue, size: isTablet ? 32 : 28),
                   const SizedBox(width: 16),
                   Expanded(
                     child: Text(
                       'Mes consultations',
-                      style: TextStyle(
+              style: TextStyle(
                         fontSize: isTablet ? 18 : 16,
                         fontWeight: FontWeight.bold,
                         color: Colors.blue[900],
@@ -984,9 +1079,9 @@ class _HomeDoctorState extends State<HomeDoctor> {
                   ),
                   const Icon(Icons.arrow_forward_ios, color: Colors.blue),
                 ],
-              ),
             ),
-          ),
+            ),
+        ),
         ],
       ),
     );
@@ -1026,7 +1121,7 @@ class _HomeDoctorState extends State<HomeDoctor> {
                 .collection('consultations')
                 .where('doctorId', isEqualTo: FirebaseAuth.instance.currentUser?.uid)
                 .where('status', isEqualTo: 'accepted')
-                .orderBy('appointmentDate')
+                .orderBy('createdAt', descending: true)
                 .limit(3)
                 .snapshots(),
             builder: (context, snapshot) {
@@ -1035,7 +1130,7 @@ class _HomeDoctorState extends State<HomeDoctor> {
               }
 
               final appointments = snapshot.data!.docs;
-
+              
               if (appointments.isEmpty) {
                 return Container(
                   padding: const EdgeInsets.all(20),
@@ -1156,7 +1251,7 @@ class _HomeDoctorState extends State<HomeDoctor> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final userId = _auth.currentUser?.uid ?? '';
-
+    
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF121212) : const Color(0xFFF5F5F5),
       appBar: _buildHomeAppBar(),
@@ -1207,13 +1302,13 @@ class _HomeDoctorState extends State<HomeDoctor> {
               BottomNavigationBarItem(
                 icon: (totalUnread > 0 && _currentMainIndex != 2)
                     ? badges.Badge(
-                  badgeContent: Text('$totalUnread', style: const TextStyle(color: Colors.white, fontSize: 10)),
-                  badgeStyle: const badges.BadgeStyle(
-                    badgeColor: Colors.blue,
-                    padding: EdgeInsets.all(5),
-                  ),
-                  child: const Icon(Icons.message),
-                )
+                        badgeContent: Text('$totalUnread', style: const TextStyle(color: Colors.white, fontSize: 10)),
+                        badgeStyle: const badges.BadgeStyle(
+                          badgeColor: Colors.blue,
+                          padding: EdgeInsets.all(5),
+                        ),
+                        child: const Icon(Icons.message),
+                      )
                     : const Icon(Icons.message),
                 label: 'Messages',
               ),
@@ -1242,8 +1337,8 @@ class _HomeDoctorState extends State<HomeDoctor> {
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
             return Text(
-                'Chargement...',
-                style: TextStyle(color: isDark ? Colors.white : Colors.black87)
+              'Chargement...', 
+              style: TextStyle(color: isDark ? Colors.white : Colors.black87)
             );
           }
           final data = snapshot.data!.data() as Map<String, dynamic>?;
@@ -1322,8 +1417,8 @@ class _HomeDoctorState extends State<HomeDoctor> {
                       color: isDark ? statusColor.withOpacity(0.2) : statusColor.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                          color: isDark ? statusColor.withOpacity(0.5) : statusColor.withOpacity(0.3),
-                          width: 1
+                        color: isDark ? statusColor.withOpacity(0.5) : statusColor.withOpacity(0.3), 
+                        width: 1
                       ),
                     ),
                     child: DropdownButton<String>(

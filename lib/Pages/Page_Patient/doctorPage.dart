@@ -53,13 +53,23 @@ class _DoctorPageState extends State<DoctorPage> {
               if (!snapshot.hasData || !snapshot.data!.exists) {
                 return Center(
                   child: Text(
-                    'Médecin non trouvé',
+                    'Information indisponible',
                     style: TextStyle(color: _textColor, fontSize: 16),
                   ),
                 );
               }
 
-              final doctorData = snapshot.data!.data() as Map<String, dynamic>;
+              try {
+                final doctorDataRaw = snapshot.data!.data();
+                if (doctorDataRaw == null || doctorDataRaw is! Map<String, dynamic>) {
+                  return Center(
+                    child: Text(
+                      'Information du médecin indisponible pour l\'instant',
+                      style: TextStyle(color: _textColor, fontSize: 16),
+                    ),
+                  );
+                }
+                final doctorData = Map<String, dynamic>.from(doctorDataRaw);
               final String photoUrl = doctorData['photoUrl']?.isNotEmpty == true 
                   ? doctorData['photoUrl'] 
                   : 'assets/default_profile.png';
@@ -218,6 +228,14 @@ class _DoctorPageState extends State<DoctorPage> {
                   ),
                 ),
               );
+              } catch (e) {
+                return Center(
+                  child: Text(
+                    'Information du médecin indisponible pour l\'instant',
+                    style: TextStyle(color: _textColor, fontSize: 16),
+                  ),
+                );
+              }
             },
           ),
         );

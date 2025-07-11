@@ -17,6 +17,9 @@ class Chat extends StatefulWidget {
   final String otherParticipantId;
   final String otherParticipantName;
   final String? otherParticipantPhoto;
+  final String? consultationId;
+  final String? patientEmail;
+  final String? patientPhone;
 
   const Chat({
     Key? key,
@@ -26,6 +29,9 @@ class Chat extends StatefulWidget {
     required this.otherParticipantId,
     required this.otherParticipantName,
     this.otherParticipantPhoto,
+    this.consultationId,
+    this.patientEmail,
+    this.patientPhone,
   }) : super(key: key);
 
   @override
@@ -50,12 +56,26 @@ class _ChatState extends State<Chat> {
   final RatingService _ratingService = RatingService();
   String? _consultationId;
   bool _hasRated = false;
+  
+  // Variables pour les informations des participants
+  String? _otherParticipantName;
+  String? _otherParticipantPhoto;
+  String? _patientName;
+  String? _doctorName;
+
+  // Couleurs de l'application
+  final Color _primaryColor = const Color(0xFF1976D2);
+  final Color _accentColor = const Color(0xFF2196F3);
+  final Color _successColor = const Color(0xFF4CAF50);
+  final Color _errorColor = const Color(0xFFF44336);
+  final Color _warningColor = const Color(0xFFFF9800);
 
   @override
   void initState() {
     super.initState();
     
     _detectUserRole();
+    _loadParticipantInfo();
 
     if (widget.chatId.isNotEmpty) {
       _markMessagesAsRead();
@@ -242,81 +262,65 @@ class _ChatState extends State<Chat> {
   }
 
   Future<void> _fetchConsultationIdAndStatus() async {
-    // Récupérer le chat
+    try {
     final chatDoc = await FirebaseFirestore.instance.collection('chats').doc(widget.chatId).get();
     if (chatDoc.exists) {
-      setState(() {
-        _consultationId = chatDoc.data()?['consultationId'] as String?;
-      });
-      // Vérifier si le chat est verrouillé
-      final chatLocked = chatDoc.data()?['chatLocked'] == true || chatDoc.data()?['isActive'] == false;
-      if (chatLocked && mounted) {
-        setState(() {
-          _canSendMessage = false;
-          _consultationTerminee = true;
-        });
-      }
-    }
-    
-    // Vérifier le statut de la consultation
-    if (_consultationId != null && _consultationId!.isNotEmpty) {
-      final consultationDoc = await FirebaseFirestore.instance.collection('consultations').doc(_consultationId).get();
+        final data = chatDoc.data() as Map<String, dynamic>;
+        _consultationId = data['consultationId'];
+        
+        if (_consultationId != null) {
+          final consultationDoc = await FirebaseFirestore.instance
+              .collection('consultations')
+              .doc(_consultationId)
+              .get();
+          
       if (consultationDoc.exists) {
-        final status = consultationDoc.data()?['status'];
-        if (status == 'completed' && mounted) {
-          setState(() {
-            _canSendMessage = false;
-            _consultationTerminee = true;
-          });
-        }
-      }
-    }
-    
-    // Vérifier si le patient a déjà évalué cette consultation
-    if (!_isDoctor && _consultationTerminee && _consultationId != null) {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        final hasRated = await _ratingService.hasPatientRatedAppointment(user.uid, _consultationId!);
+            final consultationData = consultationDoc.data() as Map<String, dynamic>;
+            final consultationStatus = consultationData['consultationStatus'];
+            
         if (mounted) {
           setState(() {
-            _hasRated = hasRated;
-          });
-          
-          // Afficher la modale d'évaluation uniquement si :
-          // 1. Le patient n'a pas encore évalué
-          // 2. N'a pas choisi de ne jamais évaluer
-          // 3. La modale n'est pas déjà affichée
-          if (!_hasRated && !_neverShowRating && !_showRatingModal) {
-            _showRatingDialog();
+                _consultationTerminee = consultationStatus == 'terminated';
+                if (_consultationTerminee) {
+                  _canSendMessage = false; // Empêcher l'envoi de messages
+                }
+              });
+            }
           }
         }
+        
+        // Recharger les informations du participant une fois que l'ID de consultation est récupéré
+        await _loadParticipantInfo();
       }
+    } catch (e) {
+      print('Erreur lors de la récupération du statut de consultation: $e');
     }
   }
 
   Future<void> _terminerConsultation() async {
-    setState(() => _isLoading = true);
-    try {
-      if (_consultationId == null || _consultationId!.isEmpty) {
-        throw Exception('Aucune consultation liée à ce chat.');
-      }
-      await _appointmentService.updateConsultationStatus(
-        consultationId: _consultationId!,
-        status: 'completed',
+    if (_consultationId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Impossible de terminer la consultation : ID de consultation manquant'),
+          backgroundColor: Colors.red,
+        ),
       );
-      // Verrouiller le chat côté Firestore (ne plus toucher à isActive)
-      await FirebaseFirestore.instance.collection('chats').doc(widget.chatId).update({
-        'chatLocked': true,
-      });
+      return;
+    }
+
+    try {
+      await _appointmentService.endConsultation(_consultationId!);
+      
       if (mounted) {
         setState(() {
           _consultationTerminee = true;
           _canSendMessage = false;
         });
+        
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Consultation terminée avec succès.'),
-            backgroundColor: Colors.blue,
+            content: Text('Consultation terminée avec succès'),
+            backgroundColor: Colors.green,
           ),
         );
       }
@@ -329,8 +333,6 @@ class _ChatState extends State<Chat> {
           ),
         );
       }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -414,6 +416,182 @@ class _ChatState extends State<Chat> {
     }
   }
 
+  Future<void> _loadParticipantInfo() async {
+    try {
+      if (widget.chatId.isNotEmpty) {
+        final chatDoc = await FirebaseFirestore.instance
+            .collection('chats')
+            .doc(widget.chatId)
+            .get();
+        
+        if (chatDoc.exists) {
+          final data = chatDoc.data() as Map<String, dynamic>;
+          final consultationId = data['consultationId'] as String?;
+          
+          final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+          if (currentUserId != null) {
+            // Déterminer qui est l'autre participant
+            final participants = List<String>.from(data['participants'] ?? []);
+            final otherParticipantId = participants.firstWhere(
+              (id) => id != currentUserId,
+              orElse: () => '',
+            );
+            
+            if (otherParticipantId.isNotEmpty) {
+              // Toujours récupérer les vraies informations depuis Firestore
+              await _loadParticipantInfoFromFirestore(otherParticipantId);
+              
+              // Si c'est un médecin, essayer de récupérer le nom du patient depuis la consultation
+              if (_isDoctor && consultationId != null && consultationId.isNotEmpty) {
+                await _loadPatientNameFromConsultation(consultationId);
+              }
+              
+              // Si c'est un patient, essayer de récupérer le nom du médecin depuis la consultation
+              if (!_isDoctor && consultationId != null && consultationId.isNotEmpty) {
+                await _loadDoctorNameFromConsultation(consultationId);
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      print('Erreur lors du chargement des informations des participants: $e');
+    }
+  }
+
+  Future<void> _loadParticipantInfoFromFirestore(String otherParticipantId) async {
+    try {
+      // Essayer d'abord de récupérer depuis UserDoctor
+      final doctorDoc = await FirebaseFirestore.instance
+          .collection('UserDoctor')
+          .doc(otherParticipantId)
+          .get();
+      
+      if (doctorDoc.exists) {
+        final doctorData = doctorDoc.data() as Map<String, dynamic>;
+        final doctorName = doctorData['name'] ?? 'Médecin';
+        setState(() {
+          _otherParticipantName = 'Dr. $doctorName';
+          _otherParticipantPhoto = doctorData['photoUrl'] ?? '';
+        });
+        return;
+      }
+      
+      // Si ce n'est pas un médecin, essayer UserPatient
+      final patientDoc = await FirebaseFirestore.instance
+          .collection('UserPatient')
+          .doc(otherParticipantId)
+          .get();
+      
+      if (patientDoc.exists) {
+        final patientData = patientDoc.data() as Map<String, dynamic>;
+        final patientName = patientData['name'] ?? 'Patient';
+        setState(() {
+          _otherParticipantName = patientName;
+          _otherParticipantPhoto = patientData['profileImageUrl'] ?? '';
+        });
+        return;
+      }
+      
+      // Si l'utilisateur n'est trouvé dans aucune collection, essayer de récupérer depuis les consultations
+      if (_isDoctor) {
+        // Le médecin cherche le nom du patient
+        final consultationQuery = await FirebaseFirestore.instance
+            .collection('consultations')
+            .where('patientId', isEqualTo: otherParticipantId)
+            .where('doctorId', isEqualTo: widget.currentUserId)
+            .limit(1)
+            .get();
+        
+        if (consultationQuery.docs.isNotEmpty) {
+          final consultationData = consultationQuery.docs.first.data();
+          final patientName = consultationData['patientName']?.toString();
+          if (patientName != null && patientName.isNotEmpty) {
+            setState(() {
+              _otherParticipantName = patientName;
+              _otherParticipantPhoto = consultationData['patientPhoto']?.toString() ?? '';
+            });
+            return;
+          }
+        }
+      } else {
+        // Le patient cherche le nom du médecin
+        final consultationQuery = await FirebaseFirestore.instance
+            .collection('consultations')
+            .where('doctorId', isEqualTo: otherParticipantId)
+            .where('patientId', isEqualTo: widget.currentUserId)
+            .limit(1)
+            .get();
+        
+        if (consultationQuery.docs.isNotEmpty) {
+          final consultationData = consultationQuery.docs.first.data();
+          final doctorName = consultationData['doctorName']?.toString();
+          if (doctorName != null && doctorName.isNotEmpty) {
+            setState(() {
+              _otherParticipantName = doctorName;
+              _otherParticipantPhoto = consultationData['doctorPhoto']?.toString() ?? '';
+            });
+            return;
+          }
+        }
+      }
+      
+      // Fallback final
+      setState(() {
+        _otherParticipantName = 'Utilisateur inconnu';
+        _otherParticipantPhoto = '';
+      });
+    } catch (e) {
+      print('Erreur lors de la récupération du nom depuis Firestore: $e');
+      setState(() {
+        _otherParticipantName = 'Erreur de chargement';
+        _otherParticipantPhoto = '';
+      });
+    }
+  }
+
+  Future<void> _loadPatientNameFromConsultation(String consultationId) async {
+    try {
+      final consultationDoc = await FirebaseFirestore.instance
+          .collection('consultations')
+          .doc(consultationId)
+          .get();
+      
+      if (consultationDoc.exists) {
+        final consultationData = consultationDoc.data() as Map<String, dynamic>;
+        final patientName = consultationData['patientName']?.toString();
+        if (patientName != null && patientName.isNotEmpty) {
+          setState(() {
+            _otherParticipantName = patientName;
+          });
+        }
+      }
+    } catch (e) {
+      print('Erreur lors de la récupération du nom du patient depuis consultation: $e');
+    }
+  }
+
+  Future<void> _loadDoctorNameFromConsultation(String consultationId) async {
+    try {
+      final consultationDoc = await FirebaseFirestore.instance
+          .collection('consultations')
+          .doc(consultationId)
+          .get();
+      
+      if (consultationDoc.exists) {
+        final consultationData = consultationDoc.data() as Map<String, dynamic>;
+        final doctorName = consultationData['doctorName']?.toString();
+        if (doctorName != null && doctorName.isNotEmpty) {
+          setState(() {
+            _otherParticipantName = doctorName;
+          });
+        }
+      }
+    } catch (e) {
+      print('Erreur lors de la récupération du nom du médecin depuis consultation: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.chatId.isEmpty) {
@@ -452,16 +630,16 @@ class _ChatState extends State<Chat> {
 
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: _primaryColor,
+        foregroundColor: Colors.white,
+        elevation: 2,
         title: Row(
           children: [
             CircleAvatar(
               radius: 18,
-              backgroundImage: widget.otherParticipantPhoto?.isNotEmpty == true
-                  ? NetworkImage(widget.otherParticipantPhoto!)
-                  : null,
-              child: widget.otherParticipantPhoto?.isEmpty != false
-                  ? Icon(Icons.person, size: 18, color: Colors.white)
-                  : null,
+              backgroundImage: _otherParticipantPhoto != null && _otherParticipantPhoto!.isNotEmpty
+                  ? NetworkImage(_otherParticipantPhoto!)
+                  : const AssetImage('assets/default_profile.png') as ImageProvider,
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -469,20 +647,83 @@ class _ChatState extends State<Chat> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    widget.otherParticipantName,
+                    _isDoctor 
+                        ? (_otherParticipantName ?? widget.otherParticipantName ?? 'Patient')
+                        : (_otherParticipantName ?? widget.otherParticipantName ?? 'Médecin'),
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  if (!_canSendMessage && !_isDoctor)
-                    Text(
-                      'Paiement requis',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.orange[700],
-                        fontWeight: FontWeight.w500,
-                      ),
+                  // Afficher les informations du patient pour le médecin
+                  if (_isDoctor && _consultationId != null)
+                    FutureBuilder<DocumentSnapshot>(
+                      future: FirebaseFirestore.instance
+                          .collection('consultations')
+                          .doc(_consultationId)
+                          .get(),
+                      builder: (context, snapshot) {
+                        if (snapshot.hasData && snapshot.data!.exists) {
+                          final consultationData = snapshot.data!.data() as Map<String, dynamic>;
+                          final patientName = consultationData['patientName'] ?? 'Patient';
+                          final consultationStatus = consultationData['consultationStatus'] ?? '';
+                          final isActive = consultationStatus == 'active';
+                          
+                          return Row(
+                            children: [
+                              Icon(
+                                isActive ? Icons.schedule : Icons.check_circle,
+                                size: 12,
+                                color: isActive ? Colors.orange : Colors.green,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Consultation avec $patientName',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.white70,
+                                ),
+                              ),
+                            ],
+                          );
+                        }
+                        return const SizedBox.shrink();
+                      },
+                    ),
+                  // Afficher les informations du médecin pour le patient
+                  if (!_isDoctor && _consultationId != null)
+                    FutureBuilder<DocumentSnapshot>(
+                      future: FirebaseFirestore.instance
+                          .collection('consultations')
+                          .doc(_consultationId)
+                          .get(),
+                      builder: (context, snapshot) {
+                        if (snapshot.hasData && snapshot.data!.exists) {
+                          final consultationData = snapshot.data!.data() as Map<String, dynamic>;
+                          final doctorName = consultationData['doctorName'] ?? 'Médecin';
+                          final consultationStatus = consultationData['consultationStatus'] ?? '';
+                          final isActive = consultationStatus == 'active';
+                          
+                          return Row(
+                            children: [
+                              Icon(
+                                isActive ? Icons.schedule : Icons.check_circle,
+                                size: 12,
+                                color: isActive ? Colors.orange : Colors.green,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Consultation avec Dr. $doctorName',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.white70,
+                                ),
+                              ),
+                            ],
+                          );
+                        }
+                        return const SizedBox.shrink();
+                      },
                     ),
                 ],
               ),
@@ -533,6 +774,7 @@ class _ChatState extends State<Chat> {
       ),
       body: Column(
         children: [
+          _buildConsultationTerminatedBanner(),
           if (!_canSendMessage && !_isDoctor && !_consultationTerminee)
             Container(
               width: double.infinity,
@@ -838,6 +1080,36 @@ class _ChatState extends State<Chat> {
             ),
           ),
           if (isMe) const SizedBox(width: 8),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildConsultationTerminatedBanner() {
+    if (!_consultationTerminee) return const SizedBox.shrink();
+    
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.red[50],
+        border: Border.all(color: Colors.red[200]!),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline, color: Colors.red[600], size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Cette consultation est terminée. Vous ne pouvez plus envoyer de messages.',
+              style: TextStyle(
+                color: Colors.red[700],
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
         ],
       ),
     );

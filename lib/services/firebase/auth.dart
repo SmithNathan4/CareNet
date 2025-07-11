@@ -208,4 +208,50 @@ class AuthService {
       print('Erreur lors du nettoyage des préférences: $e');
     }
   }
+
+  Future<UserCredential?> signInWithEmailAndPassword(String email, String password) async {
+    try {
+      final userCredential = await _auth.signInWithEmailAndPassword(email: email, password: password);
+      
+      // Vérifier si l'utilisateur est actif dans Firestore
+      final user = userCredential.user;
+      if (user != null) {
+        bool isActive = await _checkUserActiveStatus(user.uid);
+        if (!isActive) {
+          // Déconnecter l'utilisateur s'il est bloqué
+          await _auth.signOut();
+          throw FirebaseAuthException(
+            code: 'user-disabled',
+            message: 'Votre compte a été désactivé par l\'administrateur.',
+          );
+        }
+      }
+      
+      return userCredential;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  // Vérifier si l'utilisateur est actif dans Firestore
+  Future<bool> _checkUserActiveStatus(String uid) async {
+    try {
+      // Vérifier dans toutes les collections d'utilisateurs
+      final collections = ['UserPatient', 'UserDoctor', 'UserAdmin'];
+      
+      for (String collection in collections) {
+        final doc = await FirebaseFirestore.instance.collection(collection).doc(uid).get();
+        if (doc.exists) {
+          final data = doc.data() as Map<String, dynamic>;
+          return data['active'] != false; // Retourne true si active n'est pas false
+        }
+      }
+      
+      // Si l'utilisateur n'est trouvé dans aucune collection, considérer comme inactif
+      return false;
+    } catch (e) {
+      print('Erreur lors de la vérification du statut: $e');
+      return false;
+    }
+  }
 }

@@ -107,6 +107,19 @@ class ChatService {
         throw Exception('Conversation non trouvée ou inactive');
       }
 
+      // Vérifier si la consultation associée est terminée
+      final consultationId = chatDoc.data()?['consultationId'];
+      if (consultationId != null) {
+        final consultationDoc = await _firestore.collection('consultations').doc(consultationId).get();
+        if (consultationDoc.exists) {
+          final consultationData = consultationDoc.data();
+          final consultationStatus = consultationData?['consultationStatus'];
+          if (consultationStatus == 'terminated') {
+            throw Exception('Cette consultation est terminée. Vous ne pouvez plus envoyer de messages.');
+          }
+        }
+      }
+
       final message = {
         'senderId': senderId,
         'senderName': senderName,
@@ -322,6 +335,181 @@ class ChatService {
     } catch (e) {
       print('Erreur lors de la récupération des médecins du patient: $e');
       return [];
+    }
+  }
+
+  Future<void> migrateConversationsStructure() async {
+    try {
+      // Récupérer toutes les conversations
+      final conversations = await _firestore.collection('chats').get();
+      
+      for (final doc in conversations.docs) {
+        final data = doc.data();
+        final participantNames = data['participantNames'] as Map<String, dynamic>?;
+        
+        // Si participantNames n'existe pas ou est vide, mettre à jour la conversation
+        if (participantNames == null || participantNames.isEmpty) {
+          await _migrateConversationStructure(doc.id, data);
+        }
+      }
+      
+      print('Migration des conversations terminée');
+    } catch (e) {
+      print('Erreur lors de la migration des conversations: $e');
+    }
+  }
+
+  Future<void> _migrateConversationStructure(String chatId, Map<String, dynamic> conversation) async {
+    try {
+      final participants = List<String>.from(conversation['participants'] ?? []);
+      final Map<String, String> participantNames = {};
+      final Map<String, String> participantPhotos = {};
+      final Map<String, String> participantRoles = {};
+      
+      for (final participantId in participants) {
+        // Déterminer si c'est un médecin ou un patient
+        final doctorDoc = await _firestore
+            .collection('UserDoctor')
+            .doc(participantId)
+            .get();
+        
+        if (doctorDoc.exists) {
+          // C'est un médecin
+          final doctorData = doctorDoc.data() as Map<String, dynamic>;
+          participantNames[participantId] = 'Dr. ${doctorData['name'] ?? 'Médecin'}';
+          participantPhotos[participantId] = doctorData['photoUrl'] ?? '';
+          participantRoles[participantId] = 'doctor';
+        } else {
+          // C'est un patient
+          final patientDoc = await _firestore
+              .collection('UserPatient')
+              .doc(participantId)
+              .get();
+          
+          if (patientDoc.exists) {
+            final patientData = patientDoc.data() as Map<String, dynamic>;
+            participantNames[participantId] = patientData['name'] ?? 'Patient';
+            participantPhotos[participantId] = patientData['profileImageUrl'] ?? '';
+            participantRoles[participantId] = 'patient';
+          }
+        }
+      }
+      
+      // Mettre à jour la conversation avec les nouvelles informations
+      await _firestore.collection('chats').doc(chatId).update({
+        'participantNames': participantNames,
+        'participantPhotos': participantPhotos,
+        'participantRoles': participantRoles,
+      });
+      
+      print('Conversation $chatId migrée avec succès');
+    } catch (e) {
+      print('Erreur lors de la migration de la conversation $chatId: $e');
+    }
+  }
+
+  Future<void> forceUpdateAllConversations() async {
+    try {
+      print('Début de la mise à jour forcée de toutes les conversations...');
+      
+      // Récupérer toutes les conversations
+      final conversations = await _firestore.collection('chats').get();
+      
+      for (final doc in conversations.docs) {
+        final data = doc.data();
+        final participants = List<String>.from(data['participants'] ?? []);
+        
+        if (participants.length >= 2) {
+          await _forceUpdateConversationNames(doc.id, participants);
+        }
+      }
+      
+      print('Mise à jour forcée de toutes les conversations terminée');
+    } catch (e) {
+      print('Erreur lors de la mise à jour forcée des conversations: $e');
+    }
+  }
+
+  Future<void> _forceUpdateConversationNames(String chatId, List<String> participants) async {
+    try {
+      final Map<String, String> participantNames = {};
+      final Map<String, String> participantPhotos = {};
+      final Map<String, String> participantRoles = {};
+      
+      for (final participantId in participants) {
+        // Essayer de récupérer depuis UserDoctor
+        final doctorDoc = await _firestore
+            .collection('UserDoctor')
+            .doc(participantId)
+            .get();
+        
+        if (doctorDoc.exists) {
+          final doctorData = doctorDoc.data() as Map<String, dynamic>;
+          final doctorName = doctorData['name'] ?? 'Médecin';
+          participantNames[participantId] = 'Dr. $doctorName';
+          participantPhotos[participantId] = doctorData['photoUrl'] ?? '';
+          participantRoles[participantId] = 'doctor';
+        } else {
+          // Essayer UserPatient
+          final patientDoc = await _firestore
+              .collection('UserPatient')
+              .doc(participantId)
+              .get();
+          
+          if (patientDoc.exists) {
+            final patientData = patientDoc.data() as Map<String, dynamic>;
+            final patientName = patientData['name'] ?? 'Patient';
+            participantNames[participantId] = patientName;
+            participantPhotos[participantId] = patientData['profileImageUrl'] ?? '';
+            participantRoles[participantId] = 'patient';
+          } else {
+            // Si l'utilisateur n'est trouvé dans aucune collection, essayer les consultations
+            final consultationQuery = await _firestore
+                .collection('consultations')
+                .where('patientId', isEqualTo: participantId)
+                .limit(1)
+                .get();
+            
+            if (consultationQuery.docs.isNotEmpty) {
+              final consultationData = consultationQuery.docs.first.data();
+              final patientName = consultationData['patientName']?.toString();
+              if (patientName != null && patientName.isNotEmpty) {
+                participantNames[participantId] = patientName;
+                participantPhotos[participantId] = consultationData['patientPhoto']?.toString() ?? '';
+                participantRoles[participantId] = 'patient';
+              }
+            } else {
+              // Essayer comme médecin
+              final doctorConsultationQuery = await _firestore
+                  .collection('consultations')
+                  .where('doctorId', isEqualTo: participantId)
+                  .limit(1)
+                  .get();
+              
+              if (doctorConsultationQuery.docs.isNotEmpty) {
+                final consultationData = doctorConsultationQuery.docs.first.data();
+                final doctorName = consultationData['doctorName']?.toString();
+                if (doctorName != null && doctorName.isNotEmpty) {
+                  participantNames[participantId] = doctorName;
+                  participantPhotos[participantId] = consultationData['doctorPhoto']?.toString() ?? '';
+                  participantRoles[participantId] = 'doctor';
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      // Mettre à jour la conversation avec les nouvelles informations
+      await _firestore.collection('chats').doc(chatId).update({
+        'participantNames': participantNames,
+        'participantPhotos': participantPhotos,
+        'participantRoles': participantRoles,
+      });
+      
+      print('Conversation $chatId mise à jour avec succès');
+    } catch (e) {
+      print('Erreur lors de la mise à jour de la conversation $chatId: $e');
     }
   }
 } 

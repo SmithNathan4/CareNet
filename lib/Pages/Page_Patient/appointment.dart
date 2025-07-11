@@ -30,6 +30,12 @@ class _AppointmentState extends State<Appointment> {
     _loadAll();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _checkActiveConsultation();
+  }
+
   Future<void> _loadAll() async {
     await _loadDoctorData();
     await _loadTarif();
@@ -63,14 +69,25 @@ class _AppointmentState extends State<Appointment> {
   Future<void> _checkActiveConsultation() async {
     final user = _auth.currentUser;
     if (user == null) return;
+    
+    // Vérifier s'il y a une consultation payée et active (non terminée) avec ce médecin
     final existingActiveConsultation = await FirebaseFirestore.instance
         .collection('consultations')
         .where('patientId', isEqualTo: user.uid)
         .where('doctorId', isEqualTo: widget.doctorId)
-        .where('status', isEqualTo: 'active')
+        .where('consultationStatus', isEqualTo: 'active')
+        .orderBy('createdAt', descending: true)
+        .limit(1)
         .get();
+
+    print('Consultations actives trouvées: ${existingActiveConsultation.docs.length}');
+    for (var doc in existingActiveConsultation.docs) {
+      print('Consultation active: ${doc.data()}');
+    }
+    
     if (mounted) {
       setState(() {
+        // Considérer qu'il y a une consultation active si une consultation payée et non terminée existe
         _hasActiveConsultation = existingActiveConsultation.docs.isNotEmpty;
       });
     }
@@ -93,9 +110,11 @@ class _AppointmentState extends State<Appointment> {
             patientName: _auth.currentUser?.displayName ?? 'Patient',
             patientPhoto: _auth.currentUser?.photoURL,
             doctorPhoto: _doctorData!['photoUrl'],
-            onPaymentSuccess: () {
+            onPaymentSuccess: () async {
               Navigator.pop(context);
               Navigator.pop(context);
+              await Future.delayed(const Duration(seconds: 1));
+              _checkActiveConsultation();
             },
           ),
         ),
@@ -113,6 +132,28 @@ class _AppointmentState extends State<Appointment> {
         });
       }
     }
+  }
+
+  Future<void> _tryStartPayment() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    final existingActiveConsultation = await FirebaseFirestore.instance
+        .collection('consultations')
+        .where('patientId', isEqualTo: user.uid)
+        .where('doctorId', isEqualTo: widget.doctorId)
+        .where('consultationStatus', isEqualTo: 'active')
+        .limit(1)
+        .get();
+
+    if (existingActiveConsultation.docs.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Vous avez déjà une consultation en cours avec ce médecin.')),
+      );
+      return;
+    }
+
+    _submitAppointment();
   }
 
   Widget _buildDetailItem(IconData icon, String label, String value) {
@@ -159,14 +200,33 @@ class _AppointmentState extends State<Appointment> {
       );
     }
 
-    if (_doctorData == null) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('Erreur'),
+    if (_doctorData == null || _doctorData is! Map<String, dynamic>) {
+      return Column(
+        children: [
+          SizedBox(height: 32),
+          Center(
+            child: Text(
+              'Information indisponible',
+              style: TextStyle(color: Colors.red, fontSize: 16),
         ),
-        body: const Center(
-          child: Text('Impossible de charger les informations du médecin'),
+          ),
+          const SizedBox(height: 16),
+          Center(
+            child: TextButton.icon(
+              onPressed: () {
+                Navigator.pushNamed(
+                  context,
+                  AppRoutes.doctorPage,
+                  arguments: {
+                    'doctorId': widget.doctorId,
+                  },
+                );
+              },
+              icon: const Icon(Icons.info_outline),
+              label: const Text('Voir plus d\'informations'),
         ),
+          ),
+        ],
       );
     }
 
@@ -346,7 +406,7 @@ class _AppointmentState extends State<Appointment> {
                               ),
                             )
                           : ElevatedButton(
-                              onPressed: _isSubmitting ? null : _submitAppointment,
+                              onPressed: _isSubmitting ? null : _tryStartPayment,
                               style: ElevatedButton.styleFrom(
                                 padding: const EdgeInsets.symmetric(vertical: 16),
                                 shape: RoundedRectangleBorder(

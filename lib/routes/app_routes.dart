@@ -110,6 +110,9 @@ class AppRoutes {
             otherParticipantId: args?['otherParticipantId'] ?? '',
             otherParticipantName: args?['otherParticipantName'] ?? '',
             otherParticipantPhoto: args?['otherParticipantPhoto'],
+            consultationId: args?['consultationId'],
+            patientEmail: args?['patientEmail'],
+            patientPhone: args?['patientPhone'],
           ),
         );
       case doctorList:
@@ -278,6 +281,9 @@ class AppRoutes {
     required String recipientName,
     required String recipientRole,
     String? recipientPhoto,
+    String? consultationId,
+    String? patientEmail,
+    String? patientPhone,
   }) {
     Navigator.pushNamed(
       context,
@@ -290,6 +296,9 @@ class AppRoutes {
         'recipientName': recipientName,
         'recipientRole': recipientRole,
         'recipientPhoto': recipientPhoto,
+        'consultationId': consultationId,
+        'patientEmail': patientEmail,
+        'patientPhone': patientPhone,
       },
     );
   }

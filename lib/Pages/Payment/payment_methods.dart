@@ -130,7 +130,7 @@ class _PaymentMethodsState extends State<PaymentMethods> with SingleTickerProvid
   }
 
   Future<void> _processPayment() async {
-    if (_selectedPaymentMethod == null) {
+    if (_selectedPaymentMethod.isEmpty) {
       _showSnackBar('Veuillez sélectionner une méthode de paiement', isError: true);
       return;
     }
@@ -144,133 +144,87 @@ class _PaymentMethodsState extends State<PaymentMethods> with SingleTickerProvid
     });
 
     try {
-      // Récupérer l'ID de l'utilisateur actuel
       final currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser == null) {
         throw Exception('Utilisateur non connecté');
       }
-
       final currentUserId = currentUser.uid;
       if (currentUserId.isEmpty) {
         throw Exception('ID utilisateur manquant');
       }
 
-      // Chercher la dernière consultation (même terminée) entre ce patient et ce médecin
-      final existingConsultations = await FirebaseFirestore.instance
+      // VÉRIFICATION : Empêcher les paiements multiples au même médecin
+      final existingActiveConsultation = await FirebaseFirestore.instance
           .collection('consultations')
           .where('patientId', isEqualTo: currentUserId)
           .where('doctorId', isEqualTo: widget.doctorId)
-          .orderBy('createdAt', descending: true)
+          .where('consultationStatus', isEqualTo: 'active')
+          .limit(1)
           .get();
 
-      String? consultationId;
-      bool reactivateConsultation = false;
-      if (existingConsultations.docs.isNotEmpty) {
-        final lastConsultation = existingConsultations.docs.first;
-        // Vérifier si la consultation est liée à un chat existant
-        final chatQuery = await FirebaseFirestore.instance
-            .collection('chats')
-            .where('consultationId', isEqualTo: lastConsultation.id)
-            .get();
-        if (chatQuery.docs.isNotEmpty) {
-          // Réactiver la consultation existante
-          consultationId = lastConsultation.id;
-          reactivateConsultation = true;
-          await FirebaseFirestore.instance.collection('consultations').doc(consultationId).update({
-            'status': 'active',
-            'payments': FieldValue.arrayUnion([
-              {
-                'amount': _tarif ?? 0,
-                'method': _selectedPaymentMethod,
-                'date': Timestamp.now(),
-              }
-            ]),
-          });
-
-          // Réactiver le chat associé
-          await FirebaseFirestore.instance.collection('chats').doc(chatQuery.docs.first.id).update({
-            'isActive': true,
-            'chatLocked': false,
-          });
-        }
-      }
-      if (!reactivateConsultation) {
-        // Créer une nouvelle consultation
-        final newConsultationRef = await FirebaseFirestore.instance.collection('consultations').add({
-          'patientId': currentUserId,
-          'doctorId': widget.doctorId,
-          'status': 'active',
-          'createdAt': FieldValue.serverTimestamp(),
-          'paymentStatus': 'completed',
-          'reason': widget.reason,
-          'payments': [
-            {
-              'amount': _tarif ?? 0,
-              'method': _selectedPaymentMethod,
-              'date': Timestamp.now(),
-            }
-          ],
+      if (existingActiveConsultation.docs.isNotEmpty) {
+        _showSnackBar(
+          'Vous avez déjà une consultation en cours avec ce médecin. Veuillez terminer la consultation actuelle avant d\'en commencer une nouvelle.',
+          isError: true,
+        );
+        setState(() {
+          _isProcessing = false;
         });
-        consultationId = newConsultationRef.id;
+        return;
       }
 
-      // Récupérer les informations du patient
-      final patientDoc = await FirebaseFirestore.instance
-          .collection('UserPatient')
-          .doc(currentUserId)
-          .get();
+      // Créer une nouvelle consultation seulement s'il n'y en a pas d'active
+      final newConsultationRef = await FirebaseFirestore.instance.collection('consultations').add({
+        'patientId': currentUserId,
+        'doctorId': widget.doctorId,
+        'patientName': widget.patientName,
+        'doctorName': widget.doctorName,
+        'reason': widget.reason,
+        'createdAt': FieldValue.serverTimestamp(),
+        'paymentMethod': _selectedPaymentMethod,
+        'amount': _tarif ?? 0,
+        'patientPhoto': widget.patientPhoto ?? '',
+        'doctorPhoto': widget.doctorPhoto ?? '',
+        'paymentStatus': 'completed',
+        'consultationStatus': 'active', // Statut de consultation actif
+      });
+      final consultationId = newConsultationRef.id;
 
-      if (!patientDoc.exists) {
-        throw Exception('Profil patient non trouvé. Veuillez compléter votre profil.');
-      }
-
-      final patientData = patientDoc.data();
-      if (patientData == null) {
-        throw Exception('Données patient invalides');
-      }
-
-      final patientName = patientData['name'] as String? ?? 'Patient';
-      final patientPhoto = patientData['profileImageUrl'] as String? ?? '';
-
-      // Récupérer les informations du médecin
-      final doctorDoc = await FirebaseFirestore.instance
-          .collection('UserDoctor')
-          .doc(widget.doctorId)
-          .get();
-
-      if (!doctorDoc.exists) {
-        throw Exception('Profil médecin non trouvé');
-      }
-
-      final doctorData = doctorDoc.data();
-      if (doctorData == null) {
-        throw Exception('Données médecin invalides');
-      }
-
-      final String doctorName = doctorData['name'] as String? ?? 'Médecin';
-      final doctorPhoto = doctorData['photoUrl'] as String? ?? '';
-
-      // Créer ou réactiver la conversation entre le patient et le médecin
+      // Créer le chat associé à cette nouvelle consultation
       final chatService = ChatService();
       final chatId = await chatService.createConversation(
-        patientId: currentUserId,
-        doctorId: widget.doctorId,
-        patientName: patientName,
-        doctorName: doctorName,
-        patientPhoto: patientPhoto,
-        doctorPhoto: doctorPhoto,
+        patientId: widget.patientId ?? '',
+        doctorId: widget.doctorId ?? '',
+        patientName: widget.patientName ?? '',
+        doctorName: _doctorName ?? '',
+        patientPhoto: widget.patientPhoto ?? '',
+        doctorPhoto: widget.doctorPhoto ?? '',
         consultationId: consultationId,
       );
 
-      // Afficher le message de succès
-      if (mounted) {
-        _showSuccessDialog();
+      if (widget.onPaymentSuccess != null) {
+        widget.onPaymentSuccess!();
       }
 
-    } catch (e) {
+      // Afficher le message de succès et rediriger
       if (mounted) {
-        _showSnackBar('Erreur lors du paiement: $e', isError: true);
+        _showSnackBar('Paiement réussi ! Consultation créée avec succès.', isError: false);
+        
+        // Rediriger vers le menu principal avec l'onglet Messages sélectionné
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          AppRoutes.home,
+          (route) => false,
+          arguments: {
+            'userName': _auth.currentUser?.displayName ?? 'Patient',
+            'userPhoto': _auth.currentUser?.photoURL ?? '',
+            'userId': _auth.currentUser?.uid ?? '',
+            'firestoreService': null,
+            'selectedIndex': 2, // Index de l'onglet Messages (ConversationsList)
+          },
+        );
       }
+    } catch (e) {
+      _showSnackBar('Erreur lors du paiement : $e', isError: true);
     } finally {
       if (mounted) {
         setState(() {
@@ -278,64 +232,6 @@ class _PaymentMethodsState extends State<PaymentMethods> with SingleTickerProvid
         });
       }
     }
-  }
-
-  void _showSuccessDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: Row(
-            children: [
-              Icon(Icons.check_circle, color: successColor, size: 28),
-              const SizedBox(width: 8),
-              const Text('Paiement réussi !'),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Votre paiement de ${_tarif?.toStringAsFixed(0) ?? "-"} FCFA a été effectué avec succès.'),
-              const SizedBox(height: 16),
-              Text('Vous pouvez maintenant contacter Dr. $_doctorName dans vos messages.'),
-              const SizedBox(height: 8),
-              Text(
-                'Vous allez être redirigé vers l\'accueil avec l\'onglet Messages sélectionné.',
-                style: TextStyle(
-                  fontWeight: FontWeight.w500,
-                  color: primaryBlue,
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                // Rediriger vers l'accueil avec l'onglet Messages sélectionné
-                Navigator.of(context).pushNamedAndRemoveUntil(
-                  AppRoutes.home,
-                  (route) => false,
-                  arguments: {
-                    'userName': _auth.currentUser?.displayName ?? 'Patient',
-                    'userPhoto': _auth.currentUser?.photoURL ?? '',
-                    'userId': _auth.currentUser?.uid ?? '',
-                    'firestoreService': null,
-                    'selectedIndex': 3, // Index de l'onglet Messages
-                  },
-                );
-              },
-              child: const Text('Continuer'),
-            ),
-          ],
-        );
-      },
-    );
   }
 
   void _showPaymentSuccessDialog() async {
